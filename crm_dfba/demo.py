@@ -1,17 +1,16 @@
 """
-Minimal demo: run CRMDynamicFBA on ecoli core with each CRM variant.
+Minimal demo: run the CRM-FBA composite on ecoli core with each CRM
+variant.
 
-Uses a simple manual stepping loop (no Composite) to keep the demo
-dependency-light; the process itself is still a process_bigraph Process.
+Builds a process-bigraph document wiring CRMProcess -> FBAStep via
+shared stores for substrates/biomass/uptakes/interval, plus a RAM
+emitter for trajectories. The document is handed to Composite.run.
 """
 from __future__ import annotations
-import numpy as np
-from process_bigraph import allocate_core
+from process_bigraph import Composite, allocate_core
+from process_bigraph.emitter import emitter_from_wires, gather_emitter_results
 
-from crm_dfba import CRMDynamicFBA
-
-
-_core = allocate_core()
+from crm_dfba import crm_dfba_spec
 
 
 RESOURCES = ("glucose", "acetate")
@@ -22,34 +21,48 @@ STATIC_BOUNDS = {
 }
 
 
-def build(crm_cfg):
-    return CRMDynamicFBA(
-        config={
-            "model_file": "textbook",
-            "substrate_update_reactions": SUBSTRATE_RXNS,
-            "bounds": STATIC_BOUNDS,
-            "biomass_reaction": "Biomass_Ecoli_core",
-            "crm": crm_cfg,
+def build_document(crm_cfg, dt, initial_substrates, initial_biomass):
+    config = {
+        "model_file": "textbook",
+        "substrate_update_reactions": SUBSTRATE_RXNS,
+        "bounds": STATIC_BOUNDS,
+        "biomass_reaction": "Biomass_Ecoli_core",
+        "crm": crm_cfg,
+    }
+    state = {
+        "substrates": dict(initial_substrates),
+        "biomass": float(initial_biomass),
+        "uptakes": {r: 0.0 for r in initial_substrates},
+        "interval": float(dt),
+        "emitter": emitter_from_wires({
+            "global_time": ["global_time"],
+            "biomass": ["biomass"],
+            "substrates": ["substrates"],
+        }),
+    }
+    state.update(crm_dfba_spec(config, dt=dt))
+    return {
+        "schema": {
+            "substrates": "map[concentration]",
+            "biomass": "mass",
+            "uptakes": "overwrite[map[float]]",
+            "interval": "overwrite[float]",
         },
-        core=_core,
+        "state": state,
+    }
+
+
+def run_variant(crm_cfg, steps=100, dt=0.05):
+    core = allocate_core()
+    doc = build_document(
+        crm_cfg,
+        dt=dt,
+        initial_substrates={"glucose": 11.1, "acetate": 0.0},
+        initial_biomass=0.01,
     )
-
-
-def run(proc, steps=200, dt=0.05):
-    substrates = {"glucose": 11.1, "acetate": 0.0}
-    biomass = 0.01
-    traj = {"t": [], "biomass": [], **{r: [] for r in RESOURCES}}
-    for i in range(steps):
-        t = i * dt
-        traj["t"].append(t)
-        traj["biomass"].append(biomass)
-        for r in RESOURCES:
-            traj[r].append(substrates[r])
-        out = proc.update({"substrates": substrates, "biomass": biomass}, dt)
-        biomass += out["biomass"]
-        for r, d in out["substrates"].items():
-            substrates[r] = max(0.0, substrates[r] + d)
-    return traj
+    composite = Composite(doc, core=core)
+    composite.run(steps * dt)
+    return gather_emitter_results(composite)[("emitter",)]
 
 
 CRM_CONFIGS = {
@@ -86,14 +99,15 @@ CRM_CONFIGS = {
 
 def main():
     for name, cfg in CRM_CONFIGS.items():
-        proc = build(cfg)
-        traj = run(proc, steps=100, dt=0.05)
-        final = {
-            "biomass": traj["biomass"][-1],
-            "glucose": traj["glucose"][-1],
-            "acetate": traj["acetate"][-1],
-        }
-        print(f"[{name:>9}] final {final}")
+        history = run_variant(cfg, steps=100, dt=0.05)
+        final = history[-1]
+        subs = final.get("substrates", {})
+        print(
+            f"[{name:>9}] t={final.get('global_time'):.2f}  "
+            f"biomass={final.get('biomass'):.4g}  "
+            f"glucose={subs.get('glucose', 0.0):.4g}  "
+            f"acetate={subs.get('acetate', 0.0):.4g}"
+        )
 
 
 if __name__ == "__main__":

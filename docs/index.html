@@ -62,9 +62,9 @@ the CRM envelope so the coupling is visible at a glance.
 </div>
 
 <div class="meta">
-  <div><strong>Generated:</strong> 2026-04-15 14:05:36 UTC</div>
+  <div><strong>Generated:</strong> 2026-04-15 15:38:14 UTC</div>
   <div><strong>On:</strong> LT-0919936</div>
-  <div><strong>Commit:</strong> <a href="https://github.com/vivarium-collective/CRM-FBA/commit/518f9265ab3db68f62e83f7c1e116c913b0d04a2"><code>518f9265</code></a></div>
+  <div><strong>Commit:</strong> <a href="https://github.com/vivarium-collective/CRM-FBA/commit/7f026147faaacfebdfcb01d28588e6009426d7de"><code>7f026147</code></a></div>
   <div><strong>Source:</strong> <a href="https://github.com/vivarium-collective/CRM-FBA">vivarium-collective/CRM-FBA</a></div>
 </div>
 
@@ -89,7 +89,7 @@ the CRM envelope so the coupling is visible at a glance.
     <h3>Result</h3>
     <img src="diauxie.png" alt="diauxie" />
     <h3>Summary</h3>
-    <table><tr><td>Phenomenon</td><td>Sequential substrate utilization</td></tr><tr><td>GSM</td><td><code>textbook</code> — Escherichia coli (core GSM, 95 rxns)<br><span style='font-size:12px;color:#666'>biomass reaction: <code>Biomass_Ecoli_core</code></span></td></tr><tr><td>CRM</td><td><code>monod</code></td></tr><tr><td>Integration</td><td>360 steps × 0.05 hr = 18.0 hr simulated</td></tr><tr><td>Wall-clock time</td><td>0.22 s</td></tr><tr><td>Final biomass</td><td>1.377 gDW/L</td></tr><tr><td>Final glucose</td><td>0.000 mmol/L</td></tr><tr><td>Final acetate</td><td>0.000 mmol/L</td></tr><tr><td>Peak μ (FBA)</td><td>0.882 1/hr</td></tr><tr><td>Peak glucose CRM→FBA</td><td>u=9.68 &nbsp; · &nbsp; |v|=9.68 &nbsp; <span style='font-size:11px;color:#666'>mmol/gDW/hr</span></td></tr></table>
+    <table><tr><td>Phenomenon</td><td>Sequential substrate utilization</td></tr><tr><td>GSM</td><td><code>textbook</code> — Escherichia coli (core GSM, 95 rxns)<br><span style='font-size:12px;color:#666'>biomass reaction: <code>Biomass_Ecoli_core</code></span></td></tr><tr><td>CRM</td><td><code>monod</code></td></tr><tr><td>Integration</td><td>360 steps × 0.05 hr = 18.0 hr simulated</td></tr><tr><td>Wall-clock time</td><td>0.21 s</td></tr><tr><td>Final biomass</td><td>1.377 gDW/L</td></tr><tr><td>Final glucose</td><td>0.000 mmol/L</td></tr><tr><td>Final acetate</td><td>0.000 mmol/L</td></tr><tr><td>Peak μ (FBA)</td><td>0.882 1/hr</td></tr><tr><td>Peak glucose CRM→FBA</td><td>u=9.68 &nbsp; · &nbsp; |v|=9.68 &nbsp; <span style='font-size:11px;color:#666'>mmol/gDW/hr</span></td></tr></table>
     <h3>Configuration</h3>
     <pre class="config">model_file        = &#x27;textbook&#x27;   # Escherichia coli (core GSM, 95 rxns)
 biomass_reaction  = &#x27;Biomass_Ecoli_core&#x27;
@@ -123,7 +123,7 @@ bounds            = {&#x27;EX_o2_e&#x27;: {&#x27;lower&#x27;: -5.0, &#x27;upper&
     <h3>Result</h3>
     <img src="adaptive.png" alt="adaptive" />
     <h3>Summary</h3>
-    <table><tr><td>Phenomenon</td><td>Dynamic trait reallocation</td></tr><tr><td>GSM</td><td><code>textbook</code> — Escherichia coli (core GSM, 95 rxns)<br><span style='font-size:12px;color:#666'>biomass reaction: <code>Biomass_Ecoli_core</code></span></td></tr><tr><td>CRM</td><td><code>adaptive</code></td></tr><tr><td>Integration</td><td>480 steps × 0.05 hr = 24.0 hr simulated</td></tr><tr><td>Wall-clock time</td><td>0.38 s</td></tr><tr><td>Final biomass</td><td>0.784 gDW/L</td></tr><tr><td>Final glucose</td><td>0.000 mmol/L</td></tr><tr><td>Final acetate</td><td>0.019 mmol/L</td></tr><tr><td>Peak μ (FBA)</td><td>0.493 1/hr</td></tr><tr><td>Peak glucose CRM→FBA</td><td>u=9.51 &nbsp; · &nbsp; |v|=9.51 &nbsp; <span style='font-size:11px;color:#666'>mmol/gDW/hr</span></td></tr><tr><td>Peak acetate CRM→FBA</td><td>u=4.61 &nbsp; · &nbsp; |v|=4.61 &nbsp; <span style='font-size:11px;color:#666'>mmol/gDW/hr</span></td></tr></table>
+    <table><tr><td>Phenomenon</td><td>Dynamic trait reallocation</td></tr><tr><td>GSM</td><td><code>textbook</code> — Escherichia coli (core GSM, 95 rxns)<br><span style='font-size:12px;color:#666'>biomass reaction: <code>Biomass_Ecoli_core</code></span></td></tr><tr><td>CRM</td><td><code>adaptive</code></td></tr><tr><td>Integration</td><td>480 steps × 0.05 hr = 24.0 hr simulated</td></tr><tr><td>Wall-clock time</td><td>0.36 s</td></tr><tr><td>Final biomass</td><td>0.784 gDW/L</td></tr><tr><td>Final glucose</td><td>0.000 mmol/L</td></tr><tr><td>Final acetate</td><td>0.019 mmol/L</td></tr><tr><td>Peak μ (FBA)</td><td>0.493 1/hr</td></tr><tr><td>Peak glucose CRM→FBA</td><td>u=9.51 &nbsp; · &nbsp; |v|=9.51 &nbsp; <span style='font-size:11px;color:#666'>mmol/gDW/hr</span></td></tr><tr><td>Peak acetate CRM→FBA</td><td>u=4.61 &nbsp; · &nbsp; |v|=4.61 &nbsp; <span style='font-size:11px;color:#666'>mmol/gDW/hr</span></td></tr></table>
     <h3>Configuration</h3>
     <pre class="config">model_file        = &#x27;textbook&#x27;   # Escherichia coli (core GSM, 95 rxns)
 biomass_reaction  = &#x27;Biomass_Ecoli_core&#x27;
@@ -157,7 +157,7 @@ bounds            = {&#x27;EX_o2_e&#x27;: {&#x27;lower&#x27;: -20.0, &#x27;upper
     <h3>Result</h3>
     <img src="cross_feed.png" alt="cross_feed" />
     <h3>Summary</h3>
-    <table><tr><td>Phenomenon</td><td>Metabolic leakage and re-uptake</td></tr><tr><td>GSM</td><td><code>textbook</code> — Escherichia coli (core GSM, 95 rxns)<br><span style='font-size:12px;color:#666'>biomass reaction: <code>Biomass_Ecoli_core</code></span></td></tr><tr><td>CRM</td><td><code>micrm</code></td></tr><tr><td>Integration</td><td>360 steps × 0.05 hr = 18.0 hr simulated</td></tr><tr><td>Wall-clock time</td><td>0.13 s</td></tr><tr><td>Final biomass</td><td>0.663 gDW/L</td></tr><tr><td>Final glucose</td><td>0.016 mmol/L</td></tr><tr><td>Final acetate</td><td>0.836 mmol/L</td></tr><tr><td>Peak μ (FBA)</td><td>0.444 1/hr</td></tr><tr><td>Peak glucose CRM→FBA</td><td>u=8.00 &nbsp; · &nbsp; |v|=8.00 &nbsp; <span style='font-size:11px;color:#666'>mmol/gDW/hr</span></td></tr><tr><td>Peak acetate CRM→FBA</td><td>u=1.13 &nbsp; · &nbsp; |v|=1.10 &nbsp; <span style='font-size:11px;color:#666'>mmol/gDW/hr</span></td></tr></table>
+    <table><tr><td>Phenomenon</td><td>Metabolic leakage and re-uptake</td></tr><tr><td>GSM</td><td><code>textbook</code> — Escherichia coli (core GSM, 95 rxns)<br><span style='font-size:12px;color:#666'>biomass reaction: <code>Biomass_Ecoli_core</code></span></td></tr><tr><td>CRM</td><td><code>micrm</code></td></tr><tr><td>Integration</td><td>360 steps × 0.05 hr = 18.0 hr simulated</td></tr><tr><td>Wall-clock time</td><td>0.12 s</td></tr><tr><td>Final biomass</td><td>0.663 gDW/L</td></tr><tr><td>Final glucose</td><td>0.016 mmol/L</td></tr><tr><td>Final acetate</td><td>0.836 mmol/L</td></tr><tr><td>Peak μ (FBA)</td><td>0.444 1/hr</td></tr><tr><td>Peak glucose CRM→FBA</td><td>u=8.00 &nbsp; · &nbsp; |v|=8.00 &nbsp; <span style='font-size:11px;color:#666'>mmol/gDW/hr</span></td></tr><tr><td>Peak acetate CRM→FBA</td><td>u=1.13 &nbsp; · &nbsp; |v|=1.10 &nbsp; <span style='font-size:11px;color:#666'>mmol/gDW/hr</span></td></tr></table>
     <h3>Configuration</h3>
     <pre class="config">model_file        = &#x27;textbook&#x27;   # Escherichia coli (core GSM, 95 rxns)
 biomass_reaction  = &#x27;Biomass_Ecoli_core&#x27;
@@ -174,7 +174,7 @@ bounds            = {&#x27;EX_o2_e&#x27;: {&#x27;lower&#x27;: -6.0, &#x27;upper&
     <h3>Result</h3>
     <img src="nutrient_sweep.png" alt="nutrient_sweep" />
     <h3>Summary</h3>
-    <table><tr><td>Phenomenon</td><td>Saturating yield curve</td></tr><tr><td>GSM</td><td><code>textbook</code> — Escherichia coli (core GSM, 95 rxns)<br><span style='font-size:12px;color:#666'>biomass reaction: <code>Biomass_Ecoli_core</code></span></td></tr><tr><td>CRM</td><td><code>monod</code></td></tr><tr><td>Integration</td><td>240 steps × 0.05 hr = 12.0 hr simulated</td></tr><tr><td>Wall-clock time</td><td>1.21 s</td></tr><tr><td>Range</td><td>glucose0 ∈ [1.0, 80.0] mmol/L (7 points)</td></tr><tr><td>Biomass range</td><td>0.099 → 7.421 gDW/L</td></tr></table>
+    <table><tr><td>Phenomenon</td><td>Saturating yield curve</td></tr><tr><td>GSM</td><td><code>textbook</code> — Escherichia coli (core GSM, 95 rxns)<br><span style='font-size:12px;color:#666'>biomass reaction: <code>Biomass_Ecoli_core</code></span></td></tr><tr><td>CRM</td><td><code>monod</code></td></tr><tr><td>Integration</td><td>240 steps × 0.05 hr = 12.0 hr simulated</td></tr><tr><td>Wall-clock time</td><td>1.15 s</td></tr><tr><td>Range</td><td>glucose0 ∈ [1.0, 80.0] mmol/L (7 points)</td></tr><tr><td>Biomass range</td><td>0.099 → 7.421 gDW/L</td></tr></table>
     <h3>Configuration</h3>
     <pre class="config">model_file        = &#x27;textbook&#x27;   # Escherichia coli (core GSM, 95 rxns)
 biomass_reaction  = &#x27;Biomass_Ecoli_core&#x27;
@@ -191,7 +191,7 @@ bounds            = {&#x27;EX_o2_e&#x27;: {&#x27;lower&#x27;: -20.0, &#x27;upper
     <h3>Result</h3>
     <img src="community.png" alt="community" />
     <h3>Summary</h3>
-    <table><tr><td>Phenomenon</td><td>Niche differentiation and cross-feeding</td></tr><tr><td>GSM (glucose_specialist)</td><td><code>textbook</code> — Escherichia coli (core GSM, 95 rxns)<br><span style='font-size:12px;color:#666'>biomass reaction: <code>Biomass_Ecoli_core</code></span></td></tr><tr><td>GSM (acetate_specialist)</td><td><code>textbook</code> — Escherichia coli (core GSM, 95 rxns)<br><span style='font-size:12px;color:#666'>biomass reaction: <code>Biomass_Ecoli_core</code></span></td></tr><tr><td>CRM</td><td><code>monod</code></td></tr><tr><td>Integration</td><td>360 steps × 0.05 hr = 18.0 hr simulated</td></tr><tr><td>Wall-clock time</td><td>0.25 s</td></tr><tr><td>Final biomass (glucose_specialist)</td><td>0.850 gDW/L &nbsp; · &nbsp; peak μ = 0.563 1/hr</td></tr><tr><td>Final biomass (acetate_specialist)</td><td>0.032 gDW/L &nbsp; · &nbsp; peak μ = 0.221 1/hr</td></tr><tr><td>Final glucose (shared pool)</td><td>0.000 mmol/L</td></tr><tr><td>Final acetate (shared pool)</td><td>9.620 mmol/L</td></tr></table>
+    <table><tr><td>Phenomenon</td><td>Niche differentiation and cross-feeding</td></tr><tr><td>GSM (glucose_specialist)</td><td><code>textbook</code> — Escherichia coli (core GSM, 95 rxns)<br><span style='font-size:12px;color:#666'>biomass reaction: <code>Biomass_Ecoli_core</code></span></td></tr><tr><td>GSM (acetate_specialist)</td><td><code>textbook</code> — Escherichia coli (core GSM, 95 rxns)<br><span style='font-size:12px;color:#666'>biomass reaction: <code>Biomass_Ecoli_core</code></span></td></tr><tr><td>CRM</td><td><code>monod</code></td></tr><tr><td>Integration</td><td>360 steps × 0.05 hr = 18.0 hr simulated</td></tr><tr><td>Wall-clock time</td><td>0.24 s</td></tr><tr><td>Final biomass (glucose_specialist)</td><td>0.850 gDW/L &nbsp; · &nbsp; peak μ = 0.563 1/hr</td></tr><tr><td>Final biomass (acetate_specialist)</td><td>0.032 gDW/L &nbsp; · &nbsp; peak μ = 0.221 1/hr</td></tr><tr><td>Final glucose (shared pool)</td><td>0.000 mmol/L</td></tr><tr><td>Final acetate (shared pool)</td><td>9.620 mmol/L</td></tr></table>
     <h3>Configuration</h3>
     <pre class="config"># glucose_specialist
 model_file        = &#x27;textbook&#x27;   # Escherichia coli (core GSM, 95 rxns)
@@ -225,8 +225,8 @@ bounds            = {&#x27;EX_o2_e&#x27;: {&#x27;lower&#x27;: -20.0, &#x27;upper
           <th>Wall-clock</th>
         </tr>
       </thead>
-      <tbody><tr><td><a href='#diauxie'>Diauxie</a></td><td>Sequential substrate utilization</td><td><code>monod</code></td><td><code>textbook</code></td><td>18.0 h</td><td>0.22 s</td></tr><tr><td><a href='#overflow'>Overflow</a></td><td>Crabtree-like acetate secretion</td><td><code>macarthur</code></td><td><code>textbook</code></td><td>15.0 h</td><td>0.11 s</td></tr><tr><td><a href='#adaptive'>Adaptive</a></td><td>Dynamic trait reallocation</td><td><code>adaptive</code></td><td><code>textbook</code></td><td>24.0 h</td><td>0.38 s</td></tr><tr><td><a href='#tilman'>Tilman</a></td><td>R-independent uptake</td><td><code>macarthur</code></td><td><code>textbook</code></td><td>15.0 h</td><td>0.10 s</td></tr><tr><td><a href='#cross_feed'>Cross Feed</a></td><td>Metabolic leakage and re-uptake</td><td><code>micrm</code></td><td><code>textbook</code></td><td>18.0 h</td><td>0.13 s</td></tr><tr><td><a href='#nutrient_sweep'>Nutrient Sweep</a></td><td>Saturating yield curve</td><td><code>monod</code></td><td><code>textbook</code></td><td>12.0 h</td><td>1.21 s</td></tr><tr><td><a href='#community'>Community</a></td><td>Niche differentiation and cross-feeding</td><td><code>monod</code></td><td><code>textbook, textbook</code></td><td>18.0 h</td><td>0.25 s</td></tr></tbody>
-      <tfoot><tr><td colspan='5' style='text-align:right;font-weight:600'>Total wall-clock</td><td style='font-weight:600'>2.39 s</td></tr></tfoot>
+      <tbody><tr><td><a href='#diauxie'>Diauxie</a></td><td>Sequential substrate utilization</td><td><code>monod</code></td><td><code>textbook</code></td><td>18.0 h</td><td>0.21 s</td></tr><tr><td><a href='#overflow'>Overflow</a></td><td>Crabtree-like acetate secretion</td><td><code>macarthur</code></td><td><code>textbook</code></td><td>15.0 h</td><td>0.11 s</td></tr><tr><td><a href='#adaptive'>Adaptive</a></td><td>Dynamic trait reallocation</td><td><code>adaptive</code></td><td><code>textbook</code></td><td>24.0 h</td><td>0.36 s</td></tr><tr><td><a href='#tilman'>Tilman</a></td><td>R-independent uptake</td><td><code>macarthur</code></td><td><code>textbook</code></td><td>15.0 h</td><td>0.10 s</td></tr><tr><td><a href='#cross_feed'>Cross Feed</a></td><td>Metabolic leakage and re-uptake</td><td><code>micrm</code></td><td><code>textbook</code></td><td>18.0 h</td><td>0.12 s</td></tr><tr><td><a href='#nutrient_sweep'>Nutrient Sweep</a></td><td>Saturating yield curve</td><td><code>monod</code></td><td><code>textbook</code></td><td>12.0 h</td><td>1.15 s</td></tr><tr><td><a href='#community'>Community</a></td><td>Niche differentiation and cross-feeding</td><td><code>monod</code></td><td><code>textbook, textbook</code></td><td>18.0 h</td><td>0.24 s</td></tr></tbody>
+      <tfoot><tr><td colspan='5' style='text-align:right;font-weight:600'>Total wall-clock</td><td style='font-weight:600'>2.28 s</td></tr></tfoot>
     </table>
   </section>
 
@@ -242,7 +242,7 @@ bounds            = {&#x27;EX_o2_e&#x27;: {&#x27;lower&#x27;: -20.0, &#x27;upper
     <h3>Re-run locally</h3>
 <pre class="config">git clone https://github.com/vivarium-collective/CRM-FBA
 cd CRM-FBA
-git checkout 518f9265
+git checkout 7f026147
 pip install -e .
 python -m crm_dfba.experiments.test_suite</pre>
 

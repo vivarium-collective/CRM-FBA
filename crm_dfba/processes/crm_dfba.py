@@ -2,112 +2,136 @@
 CRM-constrained Dynamic FBA
 ===========================
 
-A process_bigraph Process that runs FBA with exchange-reaction bounds
-derived from a configurable Consumer Resource Model (CRM). The CRM type
-is selected from a registry (MacArthur, Adaptive, MCRM, MiCRM, Monod)
-and its parameters are declared in config.
+Composite of two pieces:
+
+  - CRMProcess (Process): reads substrates + biomass, emits per-resource
+    uptake rates and the interval it was advanced over. Owns the CRM
+    instance and its internal state.
+  - FBAStep (Step): reads uptakes + substrates + biomass + interval, sets
+    exchange bounds, solves FBA, emits substrate/biomass deltas.
+
+Wired together into a composite that reproduces the behavior of the
+original monolithic CRMDynamicFBA process. The old class is retained as
+``CRMDynamicFBAMonolithic`` for equivalence testing.
 
 Coupling strategy
 -----------------
-'uptake_bounds': for each resource, the CRM-computed uptake rate u_a
-becomes the FBA exchange lower bound via
-    rxn.lower_bound = -u_a
-FBA then solves for μ and realized exchange fluxes under stoichiometry.
-Realized fluxes (not the CRM prediction) drive extracellular updates.
+'uptake_bounds': for each resource, CRM uptake u_a becomes the FBA
+exchange lower bound (rxn.lower_bound = -u_a). FBA solves for mu and
+realized exchange fluxes; realized fluxes (not CRM predictions) drive
+extracellular updates.
 """
-
 from __future__ import annotations
-import os
 import warnings
-from pathlib import Path
-from typing import Dict
+from typing import Dict, List, Mapping, Optional
 
-import cobra
-from cobra.io import load_model
 from process_bigraph import Process
 
 from crm_dfba.crms.registry import get_crm
+from crm_dfba.processes.crm import CRMProcess
+from crm_dfba.processes.fba import (
+    FBAStep,
+    _load_fba_model,
+    apply_uptake_bounds,
+)
 
 
 warnings.filterwarnings("ignore", category=UserWarning, module="cobra.util.solver")
 warnings.filterwarnings("ignore", category=FutureWarning, module="cobra.medium.boundary_types")
 
 
-def _load_fba_model(model_file: str, bounds: dict):
-    """Load SBML file, a filename relative to a models dir, or a named cobra model."""
-    search_dirs = [
-        Path(__file__).resolve().parent / ".." / "models",
-    ]
-    env_dir = os.environ.get("CRM_DFBA_MODELS_DIR")
-    if env_dir:
-        search_dirs.insert(0, Path(env_dir))
-
-    if model_file.endswith(".xml") or model_file.endswith(".sbml"):
-        for d in search_dirs:
-            p = (d / model_file).resolve()
-            if p.exists():
-                return _apply_bounds(cobra.io.read_sbml_model(str(p)), bounds)
-        p = Path(model_file)
-        if p.exists():
-            return _apply_bounds(cobra.io.read_sbml_model(str(p)), bounds)
-        raise FileNotFoundError(f"SBML file not found: {model_file}")
-
-    return _apply_bounds(load_model(model_file), bounds)
+CRM_ADDRESS = "local:!crm_dfba.processes.crm.CRMProcess"
+FBA_ADDRESS = "local:!crm_dfba.processes.fba.FBAStep"
 
 
-def _apply_bounds(model, bounds):
-    for rxn_id, limits in (bounds or {}).items():
-        rxn = model.reactions.get_by_id(rxn_id)
-        lower = limits.get("lower")
-        upper = limits.get("upper")
-        if lower is not None:
-            rxn.lower_bound = float(lower)
-        if upper is not None:
-            rxn.upper_bound = float(upper)
-    return model
-
-
-def apply_uptake_bounds(model, uptakes: Dict[str, float], substrate_rxns: Dict[str, str]) -> None:
+def crm_dfba_spec(
+    config: Mapping,
+    dt: float,
+    *,
+    crm_name: str = "crm",
+    fba_name: str = "fba",
+    store_names: Optional[Mapping[str, str]] = None,
+) -> Dict[str, dict]:
     """
-    Coupling: CRM uptake rates become FBA exchange lower bounds.
+    Build the state fragment for a CRM-FBA composite.
 
-    uptakes[resource] is a non-negative mmol/gDW/hr. Exchange convention in
-    COBRA is negative for uptake, so we set lower_bound = -u. We also raise
-    upper_bound if needed so the bound pair is consistent.
+    Parameters
+    ----------
+    config : same dict accepted by the old monolithic CRMDynamicFBA
+        (``model_file``, ``substrate_update_reactions``, ``bounds``,
+        ``biomass_reaction``, ``crm``).
+    dt : interval at which the CRMProcess is scheduled.
+    crm_name, fba_name : keys under which the two pieces appear in state.
+    store_names : optional remapping of the four shared stores; keys are
+        ``substrates``, ``biomass``, ``uptakes``, ``interval``.
+
+    Returns
+    -------
+    A dict of state entries with two process/step specs. The caller is
+    responsible for placing the shared stores (``substrates``,
+    ``biomass``, ``uptakes``, ``interval``) and any emitter into the
+    surrounding composite state.
     """
-    for resource, rxn_id in substrate_rxns.items():
-        u = max(0.0, float(uptakes.get(resource, 0.0)))
-        rxn = model.reactions.get_by_id(rxn_id)
-        lb = -u
-        if rxn.upper_bound < lb:
-            rxn.upper_bound = lb
-        rxn.lower_bound = lb
+    names = {
+        "substrates": "substrates",
+        "biomass": "biomass",
+        "uptakes": "uptakes",
+        "interval": "interval",
+    }
+    if store_names:
+        names.update(store_names)
+
+    substrate_rxns: Dict[str, str] = dict(config["substrate_update_reactions"])
+    resources: List[str] = list(substrate_rxns.keys())
+
+    crm_spec = {
+        "_type": "process",
+        "address": CRM_ADDRESS,
+        "config": {
+            "resources": resources,
+            "crm": dict(config["crm"]),
+        },
+        "interval": float(dt),
+        "inputs": {
+            "substrates": [names["substrates"]],
+            "biomass": [names["biomass"]],
+        },
+        "outputs": {
+            "uptakes": [names["uptakes"]],
+            "interval": [names["interval"]],
+        },
+    }
+
+    fba_spec = {
+        "_type": "step",
+        "address": FBA_ADDRESS,
+        "config": {
+            "model_file": config["model_file"],
+            "substrate_update_reactions": substrate_rxns,
+            "bounds": dict(config.get("bounds") or {}),
+            "biomass_reaction": config.get("biomass_reaction"),
+        },
+        "inputs": {
+            "uptakes": [names["uptakes"]],
+            "substrates": [names["substrates"]],
+            "biomass": [names["biomass"]],
+            "interval": [names["interval"]],
+        },
+        "outputs": {
+            "substrates": [names["substrates"]],
+            "biomass": [names["biomass"]],
+        },
+    }
+
+    return {crm_name: crm_spec, fba_name: fba_spec}
 
 
-class CRMDynamicFBA(Process):
+class CRMDynamicFBAMonolithic(Process):
     """
-    CRM-coupled dynamic FBA.
+    Original single-process CRM-coupled dynamic FBA.
 
-    Config
-    ------
-    model_file: str
-        SBML file or named cobra model ("textbook", etc.).
-    substrate_update_reactions: {resource: EX_rxn_id}
-        Maps CRM resource names to FBA exchange reactions. The set of keys
-        defines the CRM's resource axis.
-    bounds: {rxn_id: {"lower": .., "upper": ..}}
-        Static model bounds applied on load.
-    crm: {"type": str, "params": {...}}
-        CRM selection. type ∈ CRM_REGISTRY (macarthur|adaptive|mcrm|micrm|monod).
-        params are passed to the CRM class; see each CRM for required keys.
-    biomass_reaction: optional str
-        If set, used as the FBA objective.
-
-    Ports
-    -----
-    inputs/outputs follow spatio-flux DynamicFBA:
-        substrates: map[concentration]   (in)  /  map[count] deltas (out)
-        biomass:    mass                 (in)  /  mass delta         (out)
+    Retained so the composite can be validated against it. For new usage
+    prefer ``crm_dfba_spec`` + ``process_bigraph.Composite``.
     """
 
     config_schema = {
@@ -182,3 +206,6 @@ class CRMDynamicFBA(Process):
             "substrates": delta_subs,
             "biomass": delta_biomass,
         }
+
+
+CRMDynamicFBA = CRMDynamicFBAMonolithic
