@@ -5,12 +5,19 @@
 [![community experiment preview](docs/community.png)](https://vivarium-collective.github.io/CRM-FBA/)
 
 A [process-bigraph](https://github.com/vivarium-collective/process-bigraph)
-process that runs dynamic Flux Balance Analysis with exchange bounds
-derived from a configurable **Consumer Resource Model**. The CRM analogue
-of the Michaelis-Menten-constrained `DynamicFBA` in
-[spatio-flux](https://github.com/vivarium-collective/spatio-flux):
-the kinetics layer is swapped out for a pluggable CRM chosen from a
-registry (MacArthur, Adaptive, MCRM, MiCRM, Monod).
+**composite** that runs dynamic Flux Balance Analysis with exchange bounds
+derived from a configurable **Consumer Resource Model**. Two pieces wired
+together over shared stores:
+
+- `CRMProcess` (Process) — owns the CRM instance, reads substrates +
+  biomass, emits per-resource uptake rates and the interval it was
+  advanced over.
+- `FBAStep` (Step) — reads those uptakes, sets exchange lower bounds on
+  a COBRA model, solves FBA, and emits realized substrate/biomass deltas.
+
+The CRM layer is pluggable via a registry (MacArthur, Adaptive, MCRM,
+MiCRM, Monod). A monolithic equivalent (`CRMDynamicFBAMonolithic`) is
+kept for equivalence testing.
 
 ## Install
 
@@ -28,7 +35,10 @@ Runs seven experiments on bundled genome-scale metabolic models and writes
 `docs/index.html`. See the [live report](https://vivarium-collective.github.io/CRM-FBA/)
 for what's inside.
 
-## Use the process
+## Use the composite
+
+`CRMDynamicFBA` is a thin wrapper that builds the CRMProcess + FBAStep
+composite from a single config dict:
 
 ```python
 from crm_dfba import CRMDynamicFBA
@@ -51,6 +61,10 @@ proc = CRMDynamicFBA(config={
 
 Each CRM declares its own `params` shape — see `crm_dfba/crms/*.py`.
 Register a new CRM with `register_crm(MyCRM)` (subclass `BaseCRM`).
+
+To wire the pieces directly (e.g. embedding in a larger bigraph), use
+`crm_dfba_spec(config, dt)` to get the two-node state fragment, or
+instantiate `CRMProcess` and `FBAStep` yourself.
 
 ## Bundled GSMs
 
