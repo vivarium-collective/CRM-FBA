@@ -47,9 +47,9 @@ is CRM-limited; where they separate, FBA is stoichiometry- or O₂-limited;
 <strong>(D)</strong> the FBA-realized growth rate <code>μ(t)</code> (plus any
 CRM-internal state such as Adaptive's allocation vector <code>A_a</code>).</p>
 <div class="meta">
-  <div><strong>Generated:</strong> 2026-04-15 13:54:18 UTC</div>
+  <div><strong>Generated:</strong> 2026-04-15 14:00:03 UTC</div>
   <div><strong>On:</strong> LT-0919936</div>
-  <div><strong>Commit:</strong> <a href="https://github.com/vivarium-collective/CRM_dfba/commit/e3ca82cc7367dc919ea4308d66a0819d9881ad40"><code>e3ca82cc</code></a></div>
+  <div><strong>Commit:</strong> <a href="https://github.com/vivarium-collective/CRM_dfba/commit/b1c4d302affa4fbfce3948513b056ab51de96f0a"><code>b1c4d302</code></a></div>
 </div>
 <nav class="experiment-nav">
   <span class="nav-title">Experiments:</span>
@@ -82,7 +82,7 @@ bounds            = {&#x27;EX_o2_e&#x27;: {&#x27;lower&#x27;: -20.0, &#x27;upper
     <h3>Result</h3>
     <img src="overflow.png" alt="overflow" />
     <h3>Summary</h3>
-    <table><tr><td>Phenomenon</td><td>Crabtree-like acetate secretion</td></tr><tr><td>GSM</td><td><code>textbook</code> — Escherichia coli (core GSM, 95 rxns)<br><span style='font-size:12px;color:#666'>biomass: <code>Biomass_Ecoli_core</code></span></td></tr><tr><td>CRM type</td><td><code>macarthur</code></td></tr><tr><td>Steps × dt</td><td>300 × 0.05 hr</td></tr><tr><td>Wall-clock time</td><td>0.10 s</td></tr><tr><td>Final biomass</td><td>0.908 gDW/L</td></tr><tr><td>Final glucose</td><td>0.003 mmol/L</td></tr><tr><td>Final acetate</td><td>1.562 mmol/L</td></tr><tr><td>Peak μ (FBA)</td><td>0.608 1/hr</td></tr><tr><td>Peak glucose CRM→FBA</td><td>u=14.40 mmol/gDW/hr &nbsp; |v|=14.40 mmol/gDW/hr</td></tr><tr><td>Peak acetate CRM→FBA</td><td>u=4.14 mmol/gDW/hr &nbsp; |v|=3.35 mmol/gDW/hr</td></tr></table>
+    <table><tr><td>Phenomenon</td><td>Crabtree-like acetate secretion</td></tr><tr><td>GSM</td><td><code>textbook</code> — Escherichia coli (core GSM, 95 rxns)<br><span style='font-size:12px;color:#666'>biomass: <code>Biomass_Ecoli_core</code></span></td></tr><tr><td>CRM type</td><td><code>macarthur</code></td></tr><tr><td>Steps × dt</td><td>300 × 0.05 hr</td></tr><tr><td>Wall-clock time</td><td>0.11 s</td></tr><tr><td>Final biomass</td><td>0.908 gDW/L</td></tr><tr><td>Final glucose</td><td>0.003 mmol/L</td></tr><tr><td>Final acetate</td><td>1.562 mmol/L</td></tr><tr><td>Peak μ (FBA)</td><td>0.608 1/hr</td></tr><tr><td>Peak glucose CRM→FBA</td><td>u=14.40 mmol/gDW/hr &nbsp; |v|=14.40 mmol/gDW/hr</td></tr><tr><td>Peak acetate CRM→FBA</td><td>u=4.14 mmol/gDW/hr &nbsp; |v|=3.35 mmol/gDW/hr</td></tr></table>
     <h3>Configuration</h3>
     <pre class="config">model_file        = &#x27;textbook&#x27;   # Escherichia coli (core GSM, 95 rxns)
 biomass_reaction  = &#x27;Biomass_Ecoli_core&#x27;
@@ -100,7 +100,7 @@ bounds            = {&#x27;EX_o2_e&#x27;: {&#x27;lower&#x27;: -5.0, &#x27;upper&
     <h3>Result</h3>
     <img src="adaptive.png" alt="adaptive" />
     <h3>Summary</h3>
-    <table><tr><td>Phenomenon</td><td>Dynamic trait reallocation</td></tr><tr><td>GSM</td><td><code>textbook</code> — Escherichia coli (core GSM, 95 rxns)<br><span style='font-size:12px;color:#666'>biomass: <code>Biomass_Ecoli_core</code></span></td></tr><tr><td>CRM type</td><td><code>adaptive</code></td></tr><tr><td>Steps × dt</td><td>480 × 0.05 hr</td></tr><tr><td>Wall-clock time</td><td>0.37 s</td></tr><tr><td>Final biomass</td><td>0.784 gDW/L</td></tr><tr><td>Final glucose</td><td>0.000 mmol/L</td></tr><tr><td>Final acetate</td><td>0.019 mmol/L</td></tr><tr><td>Peak μ (FBA)</td><td>0.493 1/hr</td></tr><tr><td>Peak glucose CRM→FBA</td><td>u=9.51 mmol/gDW/hr &nbsp; |v|=9.51 mmol/gDW/hr</td></tr><tr><td>Peak acetate CRM→FBA</td><td>u=4.61 mmol/gDW/hr &nbsp; |v|=4.61 mmol/gDW/hr</td></tr></table>
+    <table><tr><td>Phenomenon</td><td>Dynamic trait reallocation</td></tr><tr><td>GSM</td><td><code>textbook</code> — Escherichia coli (core GSM, 95 rxns)<br><span style='font-size:12px;color:#666'>biomass: <code>Biomass_Ecoli_core</code></span></td></tr><tr><td>CRM type</td><td><code>adaptive</code></td></tr><tr><td>Steps × dt</td><td>480 × 0.05 hr</td></tr><tr><td>Wall-clock time</td><td>0.39 s</td></tr><tr><td>Final biomass</td><td>0.784 gDW/L</td></tr><tr><td>Final glucose</td><td>0.000 mmol/L</td></tr><tr><td>Final acetate</td><td>0.019 mmol/L</td></tr><tr><td>Peak μ (FBA)</td><td>0.493 1/hr</td></tr><tr><td>Peak glucose CRM→FBA</td><td>u=9.51 mmol/gDW/hr &nbsp; |v|=9.51 mmol/gDW/hr</td></tr><tr><td>Peak acetate CRM→FBA</td><td>u=4.61 mmol/gDW/hr &nbsp; |v|=4.61 mmol/gDW/hr</td></tr></table>
     <h3>Configuration</h3>
     <pre class="config">model_file        = &#x27;textbook&#x27;   # Escherichia coli (core GSM, 95 rxns)
 biomass_reaction  = &#x27;Biomass_Ecoli_core&#x27;
@@ -154,7 +154,7 @@ bounds            = {&#x27;EX_o2_e&#x27;: {&#x27;lower&#x27;: -6.0, &#x27;upper&
     <h3>Result</h3>
     <img src="nutrient_sweep.png" alt="nutrient_sweep" />
     <h3>Summary</h3>
-    <table><tr><td>Phenomenon</td><td>Saturating yield curve</td></tr><tr><td>GSM</td><td><code>textbook</code> — Escherichia coli (core GSM, 95 rxns)<br><span style='font-size:12px;color:#666'>biomass: <code>Biomass_Ecoli_core</code></span></td></tr><tr><td>CRM type</td><td><code>monod</code></td></tr><tr><td>Steps × dt</td><td>240 × 0.05 hr</td></tr><tr><td>Wall-clock time</td><td>1.20 s</td></tr><tr><td>Range</td><td>glucose0 ∈ [1.0, 80.0] mmol/L</td></tr></table>
+    <table><tr><td>Phenomenon</td><td>Saturating yield curve</td></tr><tr><td>GSM</td><td><code>textbook</code> — Escherichia coli (core GSM, 95 rxns)<br><span style='font-size:12px;color:#666'>biomass: <code>Biomass_Ecoli_core</code></span></td></tr><tr><td>CRM type</td><td><code>monod</code></td></tr><tr><td>Steps × dt</td><td>240 × 0.05 hr</td></tr><tr><td>Wall-clock time</td><td>1.21 s</td></tr><tr><td>Range</td><td>glucose0 ∈ [1.0, 80.0] mmol/L</td></tr></table>
     <h3>Configuration</h3>
     <pre class="config">model_file        = &#x27;textbook&#x27;   # Escherichia coli (core GSM, 95 rxns)
 biomass_reaction  = &#x27;Biomass_Ecoli_core&#x27;
