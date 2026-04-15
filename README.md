@@ -1,5 +1,7 @@
 # CRM-dFBA
 
+### **[Experiment report](https://vivarium-collective.github.io/CRM-FBA/)**
+
 A process-bigraph process that runs dynamic Flux Balance Analysis (dFBA)
 with exchange bounds derived from a configurable **Consumer Resource
 Model** (CRM). This is the CRM analogue of the Michaelis-Menten-constrained
@@ -73,3 +75,29 @@ Register a new CRM with `register_crm(MyCRM)` (subclass `BaseCRM`).
 pip install -e .
 python -m crm_dfba.demo
 ```
+
+## Experiment suite
+
+Run the full CRM-FBA experiment suite and generate the HTML report at
+`doc/index.html`:
+
+```bash
+# runs all experiments, saves plots to doc/, opens the report in a browser
+python -m crm_dfba.experiments.test_suite
+
+# headless
+python -m crm_dfba.experiments.test_suite --no-open
+
+# subset
+python -m crm_dfba.experiments.test_suite --only diauxie overflow
+```
+
+The suite ships with six experiments covering ecological and microbial
+metabolic phenomena:
+
+- **diauxie** — Monod CRM; classical glucose-then-acetate diauxic shift.
+- **overflow** — MacArthur CRM + tight O₂ cap; Crabtree-like acetate overflow.
+- **adaptive** — Picciani-Mori Adaptive CRM; dynamic reallocation from glucose to acetate as the niche shifts.
+- **tilman** — MacArthur CRM (tilman mode); R-independent constant-rate consumption.
+- **cross_feed** — MiCRM; single-organism overflow-and-reuptake of acetate.
+- **nutrient_sweep** — saturating biomass/yield curve over a log-sweep of initial glucose.
