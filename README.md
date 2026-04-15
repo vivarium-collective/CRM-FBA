@@ -101,3 +101,26 @@ metabolic phenomena:
 - **tilman** — MacArthur CRM (tilman mode); R-independent constant-rate consumption.
 - **cross_feed** — MiCRM; single-organism overflow-and-reuptake of acetate.
 - **nutrient_sweep** — saturating biomass/yield curve over a log-sweep of initial glucose.
+- **community** — two E. coli core species (glucose-specialist + acetate-specialist) sharing a single pool; niche partitioning by overflow cross-feeding.
+
+## Bundled GSMs
+
+The `crm_dfba/models/` directory ships several popular SBML models with a
+friendly-name registry (`crm_dfba.models.MODEL_REGISTRY`):
+
+| Key          | Organism                                               |
+| ------------ | ------------------------------------------------------ |
+| `ecoli_core` | E. coli core (cobrapy textbook)                        |
+| `iAF1260`    | E. coli (Feist et al. 2007)                            |
+| `iMM904`     | S. cerevisiae (Mo et al. 2009)                         |
+| `iCN900`     | C. difficile (Dannheim et al. 2017)                    |
+| `iJN746`     | P. putida (Nogales et al. 2008)                        |
+| `iNF517`     | L. lactis (Flahaut et al. 2013)                        |
+
+Configs can reference them directly:
+
+```python
+from crm_dfba.models import get_model_spec
+spec = get_model_spec("iAF1260")
+# spec["model_file"], spec["biomass_reaction"], spec["substrate_update_reactions"], ...
+```

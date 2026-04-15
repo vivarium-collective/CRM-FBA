@@ -33,6 +33,7 @@ import numpy as np
 from process_bigraph import allocate_core
 
 from crm_dfba import CRMDynamicFBA
+from crm_dfba.models import get_model_spec
 
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -55,6 +56,8 @@ class Experiment:
     steps: int = 240
     dt: float = 0.05
     series_override: Optional[Callable[["Experiment"], Dict[str, Any]]] = None
+    runner_override: Optional[Callable[["Experiment"], "RunResult"]] = None
+    extra_meta: Dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass
@@ -72,13 +75,16 @@ class RunResult:
     # CRM-internal state (e.g. adaptive allocation A)
     crm_internal: Dict[str, np.ndarray] = field(default_factory=dict)
     extra: Dict[str, Any] = field(default_factory=dict)
+    # Community results (set only by the multi-consumer runner)
+    species: Optional[Dict[str, Dict[str, Any]]] = None
 
 
 # ---------------------------------------------------------------------------
 # Runner helpers
 # ---------------------------------------------------------------------------
 def _build_process(cfg):
-    return CRMDynamicFBA(config=cfg, core=_core)
+    clean = {k: v for k, v in cfg.items() if not k.startswith("_")}
+    return CRMDynamicFBA(config=clean, core=_core)
 
 
 def _simulate(exp: Experiment) -> RunResult:
@@ -139,6 +145,94 @@ def _simulate(exp: Experiment) -> RunResult:
     )
 
 
+def _simulate_community(exp: Experiment) -> RunResult:
+    """
+    Multi-consumer community on a shared resource pool.
+
+    exp.extra_meta['species'] is a list of species specs:
+        {"name": str, "build_cfg": callable, "initial_biomass": float}
+
+    At each step every species computes its own CRM uptakes from the current
+    shared substrate concentrations, runs FBA, and returns its own
+    delta-substrates. The shared pool is updated with the *sum* of the
+    species' deltas each step. Per-species biomass updates individually.
+    """
+    species_specs = exp.extra_meta["species"]
+    procs = []
+    biomass = {}
+    for sp in species_specs:
+        procs.append((sp["name"], _build_process(sp["build_cfg"]())))
+        biomass[sp["name"]] = float(sp["initial_biomass"])
+
+    resources = list(exp.initial_substrates.keys())
+    subs = dict(exp.initial_substrates)
+
+    ts = []
+    S = {r: [] for r in resources}
+    # per-species trajectories
+    per_sp: Dict[str, Dict[str, Any]] = {}
+    for name, proc in procs:
+        per_sp[name] = {
+            "biomass": [],
+            "mu": [],
+            "u": {r: [] for r in resources},
+            "v": {r: [] for r in resources},
+        }
+
+    start = time.time()
+    for i in range(exp.steps):
+        t = i * exp.dt
+        ts.append(t)
+        for r in resources:
+            S[r].append(subs[r])
+
+        # Phase 1: per-species CRM uptakes + FBA from shared pool
+        pooled_delta_sub = {r: 0.0 for r in resources}
+        for name, proc in procs:
+            bmass = biomass[name]
+            per_sp[name]["biomass"].append(bmass)
+            u = proc.crm.compute_uptakes(subs, bmass)
+            for r in resources:
+                per_sp[name]["u"][r].append(u.get(r, 0.0))
+
+            out = proc.update({"substrates": subs, "biomass": bmass}, exp.dt)
+            denom = max(bmass * exp.dt, 1e-12)
+            for r in resources:
+                delta = out["substrates"].get(r, 0.0)
+                per_sp[name]["v"][r].append(delta / denom)
+                pooled_delta_sub[r] += delta
+            per_sp[name]["mu"].append(out["biomass"] / denom)
+            biomass[name] += out["biomass"]
+
+        # Phase 2: shared pool integrates the sum
+        for r in resources:
+            subs[r] = max(0.0, subs[r] + pooled_delta_sub[r])
+    wall = time.time() - start
+
+    # Package: total biomass goes in the standard fields; per-species in `species`
+    total_biomass = np.sum(
+        [np.array(per_sp[name]["biomass"]) for name in biomass], axis=0
+    )
+    species_out = {}
+    for name in biomass:
+        sp = per_sp[name]
+        species_out[name] = {
+            "biomass": np.array(sp["biomass"]),
+            "mu": np.array(sp["mu"]),
+            "u": {r: np.array(sp["u"][r]) for r in resources},
+            "v": {r: np.array(sp["v"][r]) for r in resources},
+        }
+
+    return RunResult(
+        experiment=exp,
+        t=np.array(ts),
+        biomass=total_biomass,
+        substrates={r: np.array(v) for r, v in S.items()},
+        wall_clock_s=wall,
+        species=species_out,
+    )
+
+
 def _simulate_sweep(exp: Experiment) -> RunResult:
     """Custom runner used for the nutrient-sweep experiment."""
     sweep = exp.series_override(exp)
@@ -155,23 +249,28 @@ def _simulate_sweep(exp: Experiment) -> RunResult:
 # ---------------------------------------------------------------------------
 # Experiment registry
 # ---------------------------------------------------------------------------
-ECOLI_CORE_SUBSTRATE_RXNS = {"glucose": "EX_glc__D_e", "acetate": "EX_ac_e"}
-ECOLI_CORE_BIOMASS = "Biomass_Ecoli_core"
-
-
-def _ecoli_core_cfg(crm, bounds=None):
+def _cfg_from(model_key: str, crm: Dict[str, Any],
+              bounds: Optional[Dict] = None,
+              substrate_update_reactions: Optional[Dict[str, str]] = None,
+              ) -> Dict[str, Any]:
+    """Build a CRMDynamicFBA config from a registered GSM plus a CRM spec."""
+    spec = get_model_spec(model_key)
+    merged_bounds = dict(spec["default_bounds"])
+    if bounds:
+        merged_bounds.update(bounds)
     return {
-        "model_file": "textbook",
-        "substrate_update_reactions": ECOLI_CORE_SUBSTRATE_RXNS,
-        "bounds": bounds or {"EX_o2_e": {"lower": -20.0, "upper": 1000.0},
-                             "ATPM": {"lower": 1.0, "upper": 1.0}},
-        "biomass_reaction": ECOLI_CORE_BIOMASS,
+        "model_file": spec["model_file"],
+        "substrate_update_reactions": substrate_update_reactions or dict(spec["substrate_update_reactions"]),
+        "bounds": merged_bounds,
+        "biomass_reaction": spec["biomass_reaction"],
         "crm": crm,
+        "_model_key": model_key,      # metadata only; passed through for the report
+        "_organism": spec["organism"],
     }
 
 
 def _diauxie_cfg():
-    return _ecoli_core_cfg({
+    return _cfg_from("ecoli_core", {
         "type": "monod",
         "params": {"kinetic_params": {"glucose": (0.5, 10.0), "acetate": (0.5, 3.0)}},
     })
@@ -180,30 +279,37 @@ def _diauxie_cfg():
 def _overflow_cfg():
     # Oxygen-limited overflow metabolism (Crabtree-like). Tight O2 cap pushes
     # FBA to secrete acetate rather than fully oxidize glucose.
-    return _ecoli_core_cfg(
-        {"type": "macarthur",
-         "params": {"c": {"glucose": 1.2, "acetate": 0.4},
-                    "resource_mode": "external"}},
-        bounds={"EX_o2_e": {"lower": -5.0, "upper": 1000.0},
-                "ATPM": {"lower": 1.0, "upper": 1.0}},
+    return _cfg_from("ecoli_core",
+        crm={"type": "macarthur",
+             "params": {"c": {"glucose": 1.2, "acetate": 0.4},
+                        "resource_mode": "external"}},
+        bounds={"EX_o2_e": {"lower": -5.0, "upper": 1000.0}},
     )
 
 
 def _adaptive_cfg():
-    return _ecoli_core_cfg({
-        "type": "adaptive",
-        "params": {
-            "v": {"glucose": 12.0, "acetate": 6.0},
-            "K": {"glucose": 0.5, "acetate": 0.5},
-            "lam": 1.2,
-            "E_star": 1.0,
-            "A0": {"glucose": 0.9, "acetate": 0.1},
+    # Tight O2 cap so FBA overflows acetate while glucose is abundant (creates
+    # a growing acetate pool to switch to), faster adaptation (lam=5), and a
+    # tiny initial acetate seed so r_acetate > 0 at t=0 and the adaptation
+    # gradient on A_acetate is non-zero from the start.
+    return _cfg_from("ecoli_core",
+        crm={
+            "type": "adaptive",
+            "params": {
+                "v": {"glucose": 10.0, "acetate": 5.0},
+                "K": {"glucose": 0.5, "acetate": 0.5},
+                "lam": 0.6,
+                "E_star": 1.0,
+                "A0": {"glucose": 0.9, "acetate": 0.1},
+                "n_substeps": 50,
+            },
         },
-    })
+        bounds={"EX_o2_e": {"lower": -6.0, "upper": 1000.0}},
+    )
 
 
 def _tilman_cfg():
-    return _ecoli_core_cfg({
+    return _cfg_from("ecoli_core", {
         "type": "macarthur",
         "params": {"c": {"glucose": 8.0, "acetate": 3.0},
                    "resource_mode": "tilman"},
@@ -211,10 +317,10 @@ def _tilman_cfg():
 
 
 def _cross_feed_cfg():
-    return _ecoli_core_cfg({
-        "type": "micrm",
-        "params": {"c": {"glucose": 1.0, "acetate": 0.3}},
-    })
+    return _cfg_from("ecoli_core",
+        crm={"type": "micrm", "params": {"c": {"glucose": 1.0, "acetate": 0.3}}},
+        bounds={"EX_o2_e": {"lower": -6.0, "upper": 1000.0}},
+    )
 
 
 def _sweep_series(exp: Experiment) -> Dict[str, Any]:
@@ -301,13 +407,16 @@ EXPERIMENT_REGISTRY: List[Experiment] = [
         description=(
             "Adaptive CRM with an internal allocation vector A_a per resource, "
             "constrained by an energy budget E_star. Initial allocation is skewed to "
-            "glucose (A0=[0.9, 0.1]). As glucose depletes and acetate accumulates from "
-            "FBA overflow, A reallocates toward acetate under the Picciani-Mori "
-            "adaptation dynamics."
+            "glucose (A0=[0.95, 0.05]) and the oxygen exchange is capped so FBA "
+            "secretes acetate as overflow while glucose is abundant. Once glucose "
+            "depletes, r_glucose → 0 so the gradient on A_glucose vanishes while "
+            "A_acetate keeps climbing under the Picciani-Mori rule — the allocation "
+            "vector reallocates toward acetate and growth continues on the acetate "
+            "pool that the cell itself produced."
         ),
         build_cfg=_adaptive_cfg,
-        initial_substrates={"glucose": 10.0, "acetate": 0.0},
-        steps=360,
+        initial_substrates={"glucose": 10.0, "acetate": 0.05},
+        steps=480,
         dt=0.05,
     ),
     Experiment(
@@ -356,6 +465,51 @@ EXPERIMENT_REGISTRY: List[Experiment] = [
         steps=240,
         dt=0.05,
         series_override=_sweep_series,
+    ),
+    Experiment(
+        name="community",
+        title="Two-species community on a shared pool",
+        phenomenon="Niche differentiation and cross-feeding",
+        description=(
+            "Two E. coli core GSMs share a single glucose+acetate pool with no "
+            "spatial separation. Species 'glucose_specialist' has a strong Monod "
+            "preference for glucose (high Vmax_glc, low Vmax_ac) and a tight O2 cap "
+            "that forces acetate overflow. Species 'acetate_specialist' has low "
+            "glucose affinity and high acetate Vmax. Early on the glucose "
+            "specialist dominates, secreting acetate; the acetate specialist then "
+            "grows on the acetate byproduct — niche partitioning by cross-feeding, "
+            "visible as two offset growth phases on the same GSM."
+        ),
+        build_cfg=_diauxie_cfg,  # unused; runner_override drives this
+        initial_substrates={"glucose": 15.0, "acetate": 0.0},
+        steps=360,
+        dt=0.05,
+        runner_override=_simulate_community,
+        extra_meta={
+            "species": [
+                {
+                    "name": "glucose_specialist",
+                    "initial_biomass": 0.008,
+                    "build_cfg": lambda: _cfg_from(
+                        "ecoli_core",
+                        crm={"type": "monod",
+                             "params": {"kinetic_params": {
+                                 "glucose": (0.3, 12.0), "acetate": (2.0, 1.0)}}},
+                        bounds={"EX_o2_e": {"lower": -6.0, "upper": 1000.0}},
+                    ),
+                },
+                {
+                    "name": "acetate_specialist",
+                    "initial_biomass": 0.002,
+                    "build_cfg": lambda: _cfg_from(
+                        "ecoli_core",
+                        crm={"type": "monod",
+                             "params": {"kinetic_params": {
+                                 "glucose": (5.0, 1.5), "acetate": (0.2, 6.0)}}},
+                    ),
+                },
+            ]
+        },
     ),
 ]
 
@@ -505,8 +659,86 @@ def _plot_sweep(result: RunResult, out_path: Path) -> None:
     plt.close(fig)
 
 
+_SPECIES_COLORS = ["#8856a7", "#e6550d", "#1b7837", "#0868ac"]
+
+
+def _plot_community(result: RunResult, out_path: Path) -> None:
+    """
+    Four panels for multi-species community runs:
+      (A) per-species biomass + shared substrate pool
+      (B) CRM component: u_a(t) per species per resource — shows that each
+          species' CRM prescribes different uptake rates from the *same* pool
+      (C) FBA result: v_a(t) per species per resource; positive = secretion
+          (producer), negative = uptake (consumer). Cross-feeding is visible
+          when one species' v_a is positive while another's is negative on
+          the same resource.
+      (D) per-species growth rate μ_i(t) — offset growth peaks reveal niche
+          partitioning.
+    """
+    exp = result.experiment
+    t = result.t
+    fig, axes = plt.subplots(2, 2, figsize=(11.5, 7.5), sharex=True)
+    (axA, axB), (axC, axD) = axes
+
+    # ----- (A) per-species biomass + shared pool -----
+    for i, (name, data) in enumerate(result.species.items()):
+        axA.plot(t, data["biomass"], lw=2.2,
+                 color=_SPECIES_COLORS[i % len(_SPECIES_COLORS)],
+                 label=f"{name} biomass")
+    axA.set_ylabel("biomass (gDW/L)")
+    ax2 = axA.twinx()
+    for r, vals in result.substrates.items():
+        ax2.plot(t, vals, lw=1.8, ls="--", color=_color(r), label=f"{r} (shared)")
+    ax2.set_ylabel("substrate (mmol/L)")
+    axA.set_title("(A) Per-species biomass + shared resource pool")
+    h1, l1 = axA.get_legend_handles_labels()
+    h2, l2 = ax2.get_legend_handles_labels()
+    axA.legend(h1 + h2, l1 + l2, loc="center right", frameon=False, fontsize=8)
+
+    # ----- (B) per-species CRM uptake rates -----
+    for i, (name, data) in enumerate(result.species.items()):
+        sp_col = _SPECIES_COLORS[i % len(_SPECIES_COLORS)]
+        for r, arr in data["u"].items():
+            axB.plot(t, arr, lw=1.8, color=sp_col,
+                     ls="-" if r == "glucose" else ":",
+                     label=f"{name} · u_{r}")
+    axB.set_ylabel("CRM uptake u_a (mmol/gDW/hr)")
+    axB.set_title("(B) CRM component: per-species uptake rates")
+    axB.legend(loc="upper right", frameon=False, fontsize=7)
+
+    # ----- (C) per-species FBA realized fluxes -----
+    for i, (name, data) in enumerate(result.species.items()):
+        sp_col = _SPECIES_COLORS[i % len(_SPECIES_COLORS)]
+        for r, arr in data["v"].items():
+            axC.plot(t, arr, lw=1.8, color=sp_col,
+                     ls="-" if r == "glucose" else ":",
+                     label=f"{name} · v_{r}")
+    axC.axhline(0, color="#888", lw=0.8)
+    axC.set_ylabel("exchange flux v_a (mmol/gDW/hr)")
+    axC.set_xlabel("time (hr)")
+    axC.set_title("(C) FBA result: realized fluxes (>0 secrete, <0 uptake)")
+    axC.legend(loc="upper right", frameon=False, fontsize=7)
+
+    # ----- (D) per-species growth rate -----
+    for i, (name, data) in enumerate(result.species.items()):
+        axD.plot(t, data["mu"], lw=2.0,
+                 color=_SPECIES_COLORS[i % len(_SPECIES_COLORS)],
+                 label=f"μ({name})")
+    axD.set_ylabel("growth rate μ_i (1/hr)")
+    axD.set_xlabel("time (hr)")
+    axD.set_title("(D) FBA growth rate per species")
+    axD.legend(loc="upper right", frameon=False, fontsize=9)
+
+    fig.suptitle(exp.title, fontsize=13, fontweight="bold", y=1.0)
+    fig.tight_layout()
+    fig.savefig(out_path, dpi=140, bbox_inches="tight")
+    plt.close(fig)
+
+
 def _plot_for(result: RunResult, out_path: Path) -> None:
-    if result.experiment.series_override is not None:
+    if result.species is not None:
+        _plot_community(result, out_path)
+    elif result.experiment.series_override is not None:
         _plot_sweep(result, out_path)
     else:
         _plot_timeseries(result, out_path)
@@ -547,10 +779,12 @@ def _short_cfg(cfg: Dict[str, Any]) -> str:
     crm = cfg.get("crm", {})
     params = crm.get("params", {})
     return (
-        f"crm.type  = {crm.get('type')}\n"
-        f"crm.params = {params}\n"
+        f"model_file        = {cfg.get('model_file')!r}   # {cfg.get('_organism', '')}\n"
+        f"biomass_reaction  = {cfg.get('biomass_reaction')!r}\n"
+        f"crm.type          = {crm.get('type')}\n"
+        f"crm.params        = {params}\n"
         f"substrate_update_reactions = {cfg.get('substrate_update_reactions')}\n"
-        f"bounds = {cfg.get('bounds')}"
+        f"bounds            = {cfg.get('bounds')}"
     )
 
 
@@ -578,16 +812,47 @@ def _gather_meta() -> Dict[str, str]:
 def _section_html(r: RunResult, doc_dir: Path) -> str:
     exp = r.experiment
     img_rel = f"{exp.name}.png"
-    cfg = exp.build_cfg()
+
+    # Collect GSM info: may be one (single) or many (community) configs
+    if exp.runner_override is _simulate_community:
+        species_cfgs = [(sp["name"], sp["build_cfg"]()) for sp in exp.extra_meta["species"]]
+        cfg = species_cfgs[0][1]
+    else:
+        species_cfgs = [("", exp.build_cfg())]
+        cfg = species_cfgs[0][1]
+
+    gsm_rows = []
+    for sp_name, sp_cfg in species_cfgs:
+        label = f" ({sp_name})" if sp_name else ""
+        gsm_rows.append(
+            f"<tr><td>GSM{label}</td>"
+            f"<td><code>{sp_cfg.get('model_file')}</code> — "
+            f"{_html.escape(str(sp_cfg.get('_organism', '')))}<br>"
+            f"<span style='font-size:12px;color:#666'>biomass: "
+            f"<code>{sp_cfg.get('biomass_reaction')}</code></span></td></tr>"
+        )
     crm_type = cfg["crm"]["type"]
 
     final_rows = [
         f"<tr><td>Phenomenon</td><td>{_html.escape(exp.phenomenon)}</td></tr>",
+        *gsm_rows,
         f"<tr><td>CRM type</td><td><code>{crm_type}</code></td></tr>",
         f"<tr><td>Steps × dt</td><td>{exp.steps} × {exp.dt} hr</td></tr>",
         f"<tr><td>Wall-clock time</td><td>{r.wall_clock_s:.2f} s</td></tr>",
     ]
-    if r.substrates:
+    if r.species is not None:
+        for sp_name, data in r.species.items():
+            final_rows.append(
+                f"<tr><td>Final biomass ({sp_name})</td>"
+                f"<td>{data['biomass'][-1]:.3f} gDW/L &nbsp; "
+                f"peak μ = {float(np.max(data['mu'])):.3f} 1/hr</td></tr>"
+            )
+        for res, vals in r.substrates.items():
+            final_rows.append(
+                f"<tr><td>Final {res} (shared pool)</td>"
+                f"<td>{vals[-1]:.3f} mmol/L</td></tr>"
+            )
+    elif r.substrates:
         final_rows.append(
             f"<tr><td>Final biomass</td><td>{r.biomass[-1]:.3f} gDW/L</td></tr>"
         )
@@ -611,6 +876,11 @@ def _section_html(r: RunResult, doc_dir: Path) -> str:
             f"<tr><td>Range</td><td>glucose0 ∈ [{r.t.min():.1f}, {r.t.max():.1f}] mmol/L</td></tr>"
         )
 
+    cfg_blocks = "\n\n".join(
+        (f"# {sp_name}\n{_short_cfg(sp_cfg)}" if sp_name else _short_cfg(sp_cfg))
+        for sp_name, sp_cfg in species_cfgs
+    )
+
     return f"""
   <section id="{exp.name}">
     <h2>{_html.escape(exp.title)}</h2>
@@ -622,7 +892,7 @@ def _section_html(r: RunResult, doc_dir: Path) -> str:
     <h3>Summary</h3>
     <table>{''.join(final_rows)}</table>
     <h3>Configuration</h3>
-    <pre class="config">{_html.escape(_short_cfg(cfg))}</pre>
+    <pre class="config">{_html.escape(cfg_blocks)}</pre>
   </section>
 """
 
@@ -692,7 +962,9 @@ def run_all(only: Optional[List[str]] = None) -> List[RunResult]:
     results = []
     for exp in selected:
         print(f"[run] {exp.name}: {exp.title}")
-        if exp.series_override is not None:
+        if exp.runner_override is not None:
+            result = exp.runner_override(exp)
+        elif exp.series_override is not None:
             result = _simulate_sweep(exp)
         else:
             result = _simulate(exp)

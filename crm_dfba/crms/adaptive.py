@@ -74,19 +74,32 @@ class AdaptiveCRM(BaseCRM):
         return {r: float(u[i]) for i, r in enumerate(self.resources)}
 
     def step_internal_state(self, uptakes, resources, biomass, interval):
+        """
+        Substep the adaptation ODE inside the outer FBA interval so the
+        dynamics remain stable at moderate lam. After each substep we soft-
+        cap sum(A) at E_star by rescaling; this matches the intent of the
+        penalty term (push budget toward E_star) without the overshoot that
+        makes an explicit-Euler step at the outer dt diverge.
+        """
         v = self.params["v"]
         lam = float(self.params["lam"])
         E_star = float(self.params["E_star"])
+        n_sub = int(self.params.get("n_substeps", 50))
 
-        r_frac = self._r_frac(resources)
         v_vec = np.array([float(v[r]) for r in self.resources])
+        r_frac = self._r_frac(resources)   # resources are held constant across substeps
+        sub_dt = float(interval) / max(n_sub, 1)
 
-        A = self._A
-        growth = float(np.sum(A * v_vec * r_frac))
-        budget = float(np.sum(A))
-        active = 1.0 if budget >= E_star else 0.0
-        penalty = active * (budget / max(E_star, 1e-12)) * growth
-
-        dA = A * (lam * v_vec * r_frac - penalty)
-        A_new = A + dA * float(interval)
-        self._A = np.maximum(A_new, 0.0)
+        A = self._A.copy()
+        for _ in range(n_sub):
+            growth = float(np.sum(A * v_vec * r_frac))
+            budget = float(np.sum(A))
+            active = 1.0 if budget >= E_star else 0.0
+            penalty = active * (budget / max(E_star, 1e-12)) * growth
+            dA = A * (lam * v_vec * r_frac - penalty)
+            A = A + dA * sub_dt
+            A = np.maximum(A, 0.0)
+            tot = A.sum()
+            if tot > E_star:   # hard budget cap for numerical stability
+                A *= E_star / tot
+        self._A = A
