@@ -1,6 +1,8 @@
 # CRM-dFBA
 
-### **[Experiment report](https://vivarium-collective.github.io/CRM-FBA/)**
+### **[Experiment report (GitHub Pages)](https://vivarium-collective.github.io/CRM-FBA/)**  ·  [report source (`doc/index.html`)](doc/index.html)  ·  [render via htmlpreview](https://htmlpreview.github.io/?https://github.com/vivarium-collective/CRM-FBA/blob/main/doc/index.html)
+
+[![community experiment preview](doc/community.png)](doc/index.html)
 
 A process-bigraph process that runs dynamic Flux Balance Analysis (dFBA)
 with exchange bounds derived from a configurable **Consumer Resource
