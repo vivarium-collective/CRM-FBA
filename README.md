@@ -1,8 +1,8 @@
 # CRM-FBA
 
-### **[→ Experiment report](https://vivarium-collective.github.io/CRM-FBA/docs/index.html)**
+### **[→ Experiment report](https://vivarium-collective.github.io/CRM-FBA/)**
 
-[![community experiment preview](docs/community.png)](https://vivarium-collective.github.io/CRM-FBA/docs/index.html)
+[![community experiment preview](docs/community.png)](https://vivarium-collective.github.io/CRM-FBA/)
 
 A [process-bigraph](https://github.com/vivarium-collective/process-bigraph)
 process that runs dynamic Flux Balance Analysis with exchange bounds
@@ -25,7 +25,7 @@ python -m crm_dfba.experiments.test_suite
 ```
 
 Runs seven experiments on bundled genome-scale metabolic models and writes
-`docs/index.html`. See the [live report](https://vivarium-collective.github.io/CRM-FBA/docs/index.html)
+`docs/index.html`. See the [live report](https://vivarium-collective.github.io/CRM-FBA/)
 for what's inside.
 
 ## Use the process
