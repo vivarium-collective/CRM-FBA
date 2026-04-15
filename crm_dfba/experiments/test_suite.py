@@ -64,6 +64,13 @@ class RunResult:
     biomass: np.ndarray
     substrates: Dict[str, np.ndarray]
     wall_clock_s: float
+    # CRM components (recorded every step)
+    crm_uptakes: Dict[str, np.ndarray] = field(default_factory=dict)
+    # FBA results: realized exchange fluxes (negative = uptake) and growth rate
+    fba_fluxes: Dict[str, np.ndarray] = field(default_factory=dict)
+    mu: Optional[np.ndarray] = None
+    # CRM-internal state (e.g. adaptive allocation A)
+    crm_internal: Dict[str, np.ndarray] = field(default_factory=dict)
     extra: Dict[str, Any] = field(default_factory=dict)
 
 
@@ -76,19 +83,44 @@ def _build_process(cfg):
 
 def _simulate(exp: Experiment) -> RunResult:
     proc = _build_process(exp.build_cfg())
+    resources = list(exp.initial_substrates.keys())
     subs = dict(exp.initial_substrates)
     biomass = float(exp.initial_biomass)
 
-    ts, bs = [], []
-    S = {r: [] for r in subs}
+    ts, bs, mus = [], [], []
+    S = {r: [] for r in resources}
+    U = {r: [] for r in resources}   # CRM uptake predictions u_a
+    V = {r: [] for r in resources}   # FBA realized exchange fluxes v_a (negative = uptake)
+    # Adaptive CRM: track allocation vector A
+    track_A = hasattr(proc.crm, "_A")
+    A_hist = {r: [] for r in resources} if track_A else {}
 
     start = time.time()
     for i in range(exp.steps):
         t = i * exp.dt
         ts.append(t); bs.append(biomass)
-        for r in subs:
+        for r in resources:
             S[r].append(subs[r])
+
+        # CRM component: uptake capacities the CRM prescribes this step
+        u = proc.crm.compute_uptakes(subs, biomass)
+        for r in resources:
+            U[r].append(u.get(r, 0.0))
+
+        if track_A:
+            for idx, r in enumerate(resources):
+                A_hist[r].append(float(proc.crm._A[idx]))
+
         out = proc.update({"substrates": subs, "biomass": biomass}, exp.dt)
+
+        # Back out realized FBA exchange fluxes (mmol/gDW/hr) from the deltas:
+        #   delta_sub = v_a * biomass * dt     =>     v_a = delta_sub / (biomass * dt)
+        # Sign convention: v < 0 is uptake, v > 0 is secretion (COBRA convention).
+        denom = max(biomass * exp.dt, 1e-12)
+        for r in resources:
+            V[r].append(out["substrates"].get(r, 0.0) / denom)
+        mus.append(out["biomass"] / denom)
+
         biomass += out["biomass"]
         for r, d in out["substrates"].items():
             subs[r] = max(0.0, subs[r] + d)
@@ -100,6 +132,10 @@ def _simulate(exp: Experiment) -> RunResult:
         biomass=np.array(bs),
         substrates={r: np.array(v) for r, v in S.items()},
         wall_clock_s=wall,
+        crm_uptakes={r: np.array(v) for r, v in U.items()},
+        fba_fluxes={r: np.array(v) for r, v in V.items()},
+        mu=np.array(mus),
+        crm_internal={r: np.array(v) for r, v in A_hist.items()} if track_A else {},
     )
 
 
@@ -182,29 +218,47 @@ def _cross_feed_cfg():
 
 
 def _sweep_series(exp: Experiment) -> Dict[str, Any]:
-    """Nutrient-sweep: vary initial glucose, report final biomass + yield."""
+    """
+    Nutrient-sweep: vary initial glucose; report, per glucose0,
+      - final biomass
+      - apparent yield Δbiomass / glucose consumed
+      - peak CRM uptake u_glucose(t=0) (Monod saturates with glucose0)
+      - peak FBA realized uptake |v_glucose|  (hits stoichiometric ceiling)
+    This makes the CRM → FBA relationship explicit across the sweep.
+    """
     start = time.time()
     glucose0_range = np.array([1.0, 2.0, 5.0, 10.0, 20.0, 40.0, 80.0])
-    finals = []
-    yields = []
+    finals, yields, u_peak, v_peak = [], [], [], []
     for g0 in glucose0_range:
         proc = _build_process(_diauxie_cfg())
         subs = {"glucose": float(g0), "acetate": 0.0}
         biomass = 0.01
+        u_max = 0.0
+        v_max = 0.0
         for _ in range(exp.steps):
+            u = proc.crm.compute_uptakes(subs, biomass).get("glucose", 0.0)
+            u_max = max(u_max, u)
             out = proc.update({"substrates": subs, "biomass": biomass}, exp.dt)
+            denom = max(biomass * exp.dt, 1e-12)
+            v = -out["substrates"].get("glucose", 0.0) / denom  # positive = uptake
+            v_max = max(v_max, v)
             biomass += out["biomass"]
             for r, d in out["substrates"].items():
                 subs[r] = max(0.0, subs[r] + d)
         finals.append(biomass)
-        # apparent yield = Δbiomass / glucose consumed
         consumed = g0 - subs["glucose"]
         yields.append((biomass - 0.01) / consumed if consumed > 1e-9 else 0.0)
+        u_peak.append(u_max)
+        v_peak.append(v_max)
     return {
         "x": glucose0_range,
         "biomass": np.array(finals),
         "wall_clock_s": time.time() - start,
-        "extra": {"yields": np.array(yields)},
+        "extra": {
+            "yields": np.array(yields),
+            "u_peak": np.array(u_peak),
+            "v_peak": np.array(v_peak),
+        },
     }
 
 
@@ -309,45 +363,143 @@ EXPERIMENT_REGISTRY: List[Experiment] = [
 # ---------------------------------------------------------------------------
 # Plotting
 # ---------------------------------------------------------------------------
+_RES_COLORS = {"glucose": "#2c7fb8", "acetate": "#31a354"}
+
+
+def _color(resource: str) -> str:
+    return _RES_COLORS.get(resource, "#888888")
+
+
 def _plot_timeseries(result: RunResult, out_path: Path) -> None:
-    fig, ax1 = plt.subplots(figsize=(7.5, 4.2))
-    ax1.plot(result.t, result.biomass, color="#c0392b", lw=2.2, label="biomass")
-    ax1.set_xlabel("time (hr)")
+    """
+    Four-panel figure per experiment that makes the CRM/FBA coupling explicit:
+
+      (A) Extracellular concentrations + biomass — the system-level trajectory.
+      (B) CRM component: u_a(t), the per-resource uptake rate the CRM prescribes.
+          This is the quantity the process uses to set FBA exchange lower bounds.
+      (C) FBA result: realized exchange flux v_a(t) (negative = uptake,
+          positive = secretion) AND the CRM-prescribed uptake envelope |u_a|
+          drawn as a dashed line. Gap between v and u shows when FBA hits
+          the CRM-imposed cap vs. when it is bounded internally.
+      (D) FBA result: realized growth rate μ(t). For CRMs with internal state
+          (e.g. Adaptive), that state is overlaid on a twin axis.
+    """
+    exp = result.experiment
+    t = result.t
+
+    fig, axes = plt.subplots(2, 2, figsize=(11.0, 7.0), sharex=True)
+    (axA, axB), (axC, axD) = axes
+
+    # ----- (A) biomass + substrates -----
+    ax1 = axA
+    ax1.plot(t, result.biomass, color="#c0392b", lw=2.2, label="biomass")
     ax1.set_ylabel("biomass (gDW/L)", color="#c0392b")
     ax1.tick_params(axis="y", labelcolor="#c0392b")
-
     ax2 = ax1.twinx()
-    colors = {"glucose": "#2c7fb8", "acetate": "#31a354"}
     for r, vals in result.substrates.items():
-        ax2.plot(result.t, vals, lw=2.0, color=colors.get(r, "#888"), label=r)
+        ax2.plot(t, vals, lw=2.0, color=_color(r), label=r)
     ax2.set_ylabel("substrate (mmol/L)")
-
+    ax1.set_title("(A) System trajectory")
     h1, l1 = ax1.get_legend_handles_labels()
     h2, l2 = ax2.get_legend_handles_labels()
-    ax1.legend(h1 + h2, l1 + l2, loc="center right", frameon=False)
+    ax1.legend(h1 + h2, l1 + l2, loc="upper right", frameon=False, fontsize=9)
 
-    ax1.set_title(result.experiment.title)
+    # ----- (B) CRM-prescribed uptake rates u_a(t) -----
+    for r, u in result.crm_uptakes.items():
+        axB.plot(t, u, lw=2.0, color=_color(r), label=f"u_{r}")
+    axB.set_ylabel("CRM uptake u_a\n(mmol/gDW/hr)")
+    axB.set_title("(B) CRM component: uptake rates")
+    axB.axhline(0, color="#ccc", lw=0.8)
+    axB.legend(loc="upper right", frameon=False, fontsize=9)
+
+    # ----- (C) FBA realized fluxes v_a(t) vs CRM envelope -----
+    for r, v in result.fba_fluxes.items():
+        col = _color(r)
+        axC.plot(t, v, lw=2.0, color=col, label=f"v_{r} (FBA)")
+        if r in result.crm_uptakes:
+            # CRM imposes EX lower bound = -u_a; show ±u_a envelope
+            axC.plot(t, -result.crm_uptakes[r], lw=1.2, ls="--", color=col, alpha=0.7,
+                     label=f"-u_{r} (CRM bound)")
+    axC.axhline(0, color="#888", lw=0.8)
+    axC.set_xlabel("time (hr)")
+    axC.set_ylabel("exchange flux\n(mmol/gDW/hr)")
+    axC.set_title("(C) FBA result: realized fluxes vs CRM bound")
+    axC.legend(loc="lower right", frameon=False, fontsize=8, ncol=2)
+
+    # ----- (D) growth rate + optional CRM internal state -----
+    axD.plot(t, result.mu if result.mu is not None else np.zeros_like(t),
+             color="#c0392b", lw=2.2, label="μ (FBA)")
+    axD.set_ylabel("growth rate μ (1/hr)", color="#c0392b")
+    axD.tick_params(axis="y", labelcolor="#c0392b")
+    axD.set_xlabel("time (hr)")
+    axD.set_title("(D) FBA growth rate" +
+                  (" + CRM allocation" if result.crm_internal else ""))
+    if result.crm_internal:
+        axD2 = axD.twinx()
+        for r, A in result.crm_internal.items():
+            axD2.plot(t, A, lw=1.8, ls=":", color=_color(r), label=f"A_{r}")
+        axD2.set_ylabel("CRM allocation A_a")
+        h1, l1 = axD.get_legend_handles_labels()
+        h2, l2 = axD2.get_legend_handles_labels()
+        axD.legend(h1 + h2, l1 + l2, loc="center right", frameon=False, fontsize=9)
+    else:
+        axD.legend(loc="upper right", frameon=False, fontsize=9)
+
+    fig.suptitle(exp.title, fontsize=13, fontweight="bold", y=1.0)
     fig.tight_layout()
     fig.savefig(out_path, dpi=140, bbox_inches="tight")
     plt.close(fig)
 
 
 def _plot_sweep(result: RunResult, out_path: Path) -> None:
+    """
+    Three-panel sweep figure:
+      (A) Final biomass and apparent yield vs initial glucose.
+      (B) CRM component: peak u_glucose saturates (Monod Vmax).
+      (C) FBA response: peak realized uptake |v_glucose| hits a ceiling set
+          by stoichiometry/O2, even as the CRM keeps demanding more.
+          The gap between (B) and (C) is the CRM→FBA coupling becoming slack.
+    """
     yields = result.extra.get("yields")
-    fig, ax1 = plt.subplots(figsize=(7.5, 4.2))
-    ax1.plot(result.t, result.biomass, marker="o", color="#c0392b", lw=2.0, label="final biomass")
-    ax1.set_xlabel("initial glucose (mmol/L)")
-    ax1.set_ylabel("final biomass (gDW/L)", color="#c0392b")
-    ax1.tick_params(axis="y", labelcolor="#c0392b")
-    ax1.set_xscale("log")
+    u_peak = result.extra.get("u_peak")
+    v_peak = result.extra.get("v_peak")
 
+    fig, (axA, axB, axC) = plt.subplots(1, 3, figsize=(13.5, 4.2))
+
+    axA.plot(result.t, result.biomass, marker="o", color="#c0392b", lw=2.0,
+             label="final biomass")
+    axA.set_xlabel("initial glucose (mmol/L)")
+    axA.set_ylabel("final biomass (gDW/L)", color="#c0392b")
+    axA.tick_params(axis="y", labelcolor="#c0392b")
+    axA.set_xscale("log")
+    axA.set_title("(A) System trajectory")
     if yields is not None:
-        ax2 = ax1.twinx()
-        ax2.plot(result.t, yields, marker="s", color="#2c7fb8", lw=2.0, label="apparent yield")
-        ax2.set_ylabel("yield Δbiomass / glucose consumed", color="#2c7fb8")
-        ax2.tick_params(axis="y", labelcolor="#2c7fb8")
+        axA2 = axA.twinx()
+        axA2.plot(result.t, yields, marker="s", color="#2c7fb8", lw=2.0,
+                  label="apparent yield")
+        axA2.set_ylabel("Δbiomass / glucose consumed", color="#2c7fb8")
+        axA2.tick_params(axis="y", labelcolor="#2c7fb8")
 
-    ax1.set_title(result.experiment.title)
+    if u_peak is not None:
+        axB.plot(result.t, u_peak, marker="o", color=_color("glucose"), lw=2.0)
+        axB.set_xscale("log")
+        axB.set_xlabel("initial glucose (mmol/L)")
+        axB.set_ylabel("peak u_glucose (mmol/gDW/hr)")
+        axB.set_title("(B) CRM component")
+
+    if v_peak is not None:
+        axC.plot(result.t, v_peak, marker="s", color=_color("glucose"), lw=2.0,
+                 label="|v_glucose| (FBA)")
+        if u_peak is not None:
+            axC.plot(result.t, u_peak, ls="--", lw=1.3, color=_color("glucose"),
+                     alpha=0.7, label="u_glucose (CRM)")
+        axC.set_xscale("log")
+        axC.set_xlabel("initial glucose (mmol/L)")
+        axC.set_ylabel("peak uptake (mmol/gDW/hr)")
+        axC.set_title("(C) FBA result vs CRM bound")
+        axC.legend(loc="lower right", frameon=False, fontsize=9)
+
+    fig.suptitle(result.experiment.title, fontsize=13, fontweight="bold", y=1.02)
     fig.tight_layout()
     fig.savefig(out_path, dpi=140, bbox_inches="tight")
     plt.close(fig)
@@ -443,6 +595,17 @@ def _section_html(r: RunResult, doc_dir: Path) -> str:
             final_rows.append(
                 f"<tr><td>Final {res}</td><td>{vals[-1]:.3f} mmol/L</td></tr>"
             )
+        if r.mu is not None and r.mu.size:
+            final_rows.append(
+                f"<tr><td>Peak μ (FBA)</td><td>{np.max(r.mu):.3f} 1/hr</td></tr>"
+            )
+        for res, u in r.crm_uptakes.items():
+            peak_u = float(np.max(u)) if u.size else 0.0
+            peak_v = float(np.max(-r.fba_fluxes[res])) if r.fba_fluxes.get(res) is not None and r.fba_fluxes[res].size else 0.0
+            final_rows.append(
+                f"<tr><td>Peak {res} CRM→FBA</td>"
+                f"<td>u={peak_u:.2f} mmol/gDW/hr &nbsp; |v|={peak_v:.2f} mmol/gDW/hr</td></tr>"
+            )
     else:
         final_rows.append(
             f"<tr><td>Range</td><td>glucose0 ∈ [{r.t.min():.1f}, {r.t.max():.1f}] mmol/L</td></tr>"
@@ -491,9 +654,18 @@ def generate_html_report(results: List[RunResult], doc_dir: Path) -> Path:
 <h1>CRM-FBA experiments</h1>
 <p>A suite of CRM-coupled dynamic FBA simulations on the <em>E. coli</em>
 core GSM, illustrating ecological and microbial-metabolic phenomena through
-different Consumer Resource Model / FBA couplings. The CRM computes
-per-resource uptake rates; these become the FBA exchange lower bounds, and
-FBA resolves μ and realized fluxes under stoichiometry.</p>
+different Consumer Resource Model / FBA couplings.</p>
+<p>Each experiment plot makes the coupling explicit with four panels:
+<strong>(A)</strong> the system trajectory (biomass + extracellular resources);
+<strong>(B)</strong> the <em>CRM component</em>, i.e. the per-resource uptake
+rate <code>u_a(t)</code> that the CRM prescribes and which the process writes
+into <code>EX_rxn.lower_bound = −u_a</code>;
+<strong>(C)</strong> the <em>FBA result</em>, the realized exchange flux
+<code>v_a(t)</code> (negative = uptake, positive = secretion) plotted against
+the CRM-imposed envelope <code>−u_a</code> — where the two curves touch, FBA
+is CRM-limited; where they separate, FBA is stoichiometry- or O₂-limited;
+<strong>(D)</strong> the FBA-realized growth rate <code>μ(t)</code> (plus any
+CRM-internal state such as Adaptive's allocation vector <code>A_a</code>).</p>
 <div class="meta">
   <div><strong>Generated:</strong> {meta['generated']}</div>
   <div><strong>On:</strong> {_html.escape(meta['host'])}</div>

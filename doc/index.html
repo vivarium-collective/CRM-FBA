@@ -34,13 +34,22 @@
 <h1>CRM-FBA experiments</h1>
 <p>A suite of CRM-coupled dynamic FBA simulations on the <em>E. coli</em>
 core GSM, illustrating ecological and microbial-metabolic phenomena through
-different Consumer Resource Model / FBA couplings. The CRM computes
-per-resource uptake rates; these become the FBA exchange lower bounds, and
-FBA resolves μ and realized fluxes under stoichiometry.</p>
+different Consumer Resource Model / FBA couplings.</p>
+<p>Each experiment plot makes the coupling explicit with four panels:
+<strong>(A)</strong> the system trajectory (biomass + extracellular resources);
+<strong>(B)</strong> the <em>CRM component</em>, i.e. the per-resource uptake
+rate <code>u_a(t)</code> that the CRM prescribes and which the process writes
+into <code>EX_rxn.lower_bound = −u_a</code>;
+<strong>(C)</strong> the <em>FBA result</em>, the realized exchange flux
+<code>v_a(t)</code> (negative = uptake, positive = secretion) plotted against
+the CRM-imposed envelope <code>−u_a</code> — where the two curves touch, FBA
+is CRM-limited; where they separate, FBA is stoichiometry- or O₂-limited;
+<strong>(D)</strong> the FBA-realized growth rate <code>μ(t)</code> (plus any
+CRM-internal state such as Adaptive's allocation vector <code>A_a</code>).</p>
 <div class="meta">
-  <div><strong>Generated:</strong> 2026-04-15 13:40:12 UTC</div>
+  <div><strong>Generated:</strong> 2026-04-15 13:44:15 UTC</div>
   <div><strong>On:</strong> LT-0919936</div>
-  <div><strong>Commit:</strong> <a href="https://github.com/vivarium-collective/CRM_dfba/commit/7a1dd63786dd7a19a627830eb37f2652219b4c5d"><code>7a1dd637</code></a></div>
+  <div><strong>Commit:</strong> <a href="https://github.com/vivarium-collective/CRM_dfba/commit/fd810c8638897ad41684b4ab1d8a1057fb2eec10"><code>fd810c86</code></a></div>
 </div>
 <nav class="experiment-nav">
   <span class="nav-title">Experiments:</span>
@@ -55,7 +64,7 @@ FBA resolves μ and realized fluxes under stoichiometry.</p>
     <h3>Result</h3>
     <img src="diauxie.png" alt="diauxie" />
     <h3>Summary</h3>
-    <table><tr><td>Phenomenon</td><td>Sequential substrate utilization</td></tr><tr><td>CRM type</td><td><code>monod</code></td></tr><tr><td>Steps × dt</td><td>360 × 0.05 hr</td></tr><tr><td>Wall-clock time</td><td>0.20 s</td></tr><tr><td>Final biomass</td><td>1.377 gDW/L</td></tr><tr><td>Final glucose</td><td>0.000 mmol/L</td></tr><tr><td>Final acetate</td><td>0.000 mmol/L</td></tr></table>
+    <table><tr><td>Phenomenon</td><td>Sequential substrate utilization</td></tr><tr><td>CRM type</td><td><code>monod</code></td></tr><tr><td>Steps × dt</td><td>360 × 0.05 hr</td></tr><tr><td>Wall-clock time</td><td>0.20 s</td></tr><tr><td>Final biomass</td><td>1.377 gDW/L</td></tr><tr><td>Final glucose</td><td>0.000 mmol/L</td></tr><tr><td>Final acetate</td><td>0.000 mmol/L</td></tr><tr><td>Peak μ (FBA)</td><td>0.882 1/hr</td></tr><tr><td>Peak glucose CRM→FBA</td><td>u=9.68 mmol/gDW/hr &nbsp; |v|=9.68 mmol/gDW/hr</td></tr><tr><td>Peak acetate CRM→FBA</td><td>u=0.00 mmol/gDW/hr &nbsp; |v|=-0.00 mmol/gDW/hr</td></tr></table>
     <h3>Configuration</h3>
     <pre class="config">crm.type  = monod
 crm.params = {&#x27;kinetic_params&#x27;: {&#x27;glucose&#x27;: (0.5, 10.0), &#x27;acetate&#x27;: (0.5, 3.0)}}
@@ -71,7 +80,7 @@ bounds = {&#x27;EX_o2_e&#x27;: {&#x27;lower&#x27;: -20.0, &#x27;upper&#x27;: 100
     <h3>Result</h3>
     <img src="overflow.png" alt="overflow" />
     <h3>Summary</h3>
-    <table><tr><td>Phenomenon</td><td>Crabtree-like acetate secretion</td></tr><tr><td>CRM type</td><td><code>macarthur</code></td></tr><tr><td>Steps × dt</td><td>300 × 0.05 hr</td></tr><tr><td>Wall-clock time</td><td>0.10 s</td></tr><tr><td>Final biomass</td><td>0.908 gDW/L</td></tr><tr><td>Final glucose</td><td>0.003 mmol/L</td></tr><tr><td>Final acetate</td><td>1.562 mmol/L</td></tr></table>
+    <table><tr><td>Phenomenon</td><td>Crabtree-like acetate secretion</td></tr><tr><td>CRM type</td><td><code>macarthur</code></td></tr><tr><td>Steps × dt</td><td>300 × 0.05 hr</td></tr><tr><td>Wall-clock time</td><td>0.10 s</td></tr><tr><td>Final biomass</td><td>0.908 gDW/L</td></tr><tr><td>Final glucose</td><td>0.003 mmol/L</td></tr><tr><td>Final acetate</td><td>1.562 mmol/L</td></tr><tr><td>Peak μ (FBA)</td><td>0.608 1/hr</td></tr><tr><td>Peak glucose CRM→FBA</td><td>u=14.40 mmol/gDW/hr &nbsp; |v|=14.40 mmol/gDW/hr</td></tr><tr><td>Peak acetate CRM→FBA</td><td>u=4.14 mmol/gDW/hr &nbsp; |v|=3.35 mmol/gDW/hr</td></tr></table>
     <h3>Configuration</h3>
     <pre class="config">crm.type  = macarthur
 crm.params = {&#x27;c&#x27;: {&#x27;glucose&#x27;: 1.2, &#x27;acetate&#x27;: 0.4}, &#x27;resource_mode&#x27;: &#x27;external&#x27;}
@@ -87,7 +96,7 @@ bounds = {&#x27;EX_o2_e&#x27;: {&#x27;lower&#x27;: -5.0, &#x27;upper&#x27;: 1000
     <h3>Result</h3>
     <img src="adaptive.png" alt="adaptive" />
     <h3>Summary</h3>
-    <table><tr><td>Phenomenon</td><td>Dynamic trait reallocation</td></tr><tr><td>CRM type</td><td><code>adaptive</code></td></tr><tr><td>Steps × dt</td><td>360 × 0.05 hr</td></tr><tr><td>Wall-clock time</td><td>0.21 s</td></tr><tr><td>Final biomass</td><td>0.898 gDW/L</td></tr><tr><td>Final glucose</td><td>0.000 mmol/L</td></tr><tr><td>Final acetate</td><td>0.716 mmol/L</td></tr></table>
+    <table><tr><td>Phenomenon</td><td>Dynamic trait reallocation</td></tr><tr><td>CRM type</td><td><code>adaptive</code></td></tr><tr><td>Steps × dt</td><td>360 × 0.05 hr</td></tr><tr><td>Wall-clock time</td><td>0.21 s</td></tr><tr><td>Final biomass</td><td>0.898 gDW/L</td></tr><tr><td>Final glucose</td><td>0.000 mmol/L</td></tr><tr><td>Final acetate</td><td>0.716 mmol/L</td></tr><tr><td>Peak μ (FBA)</td><td>1.024 1/hr</td></tr><tr><td>Peak glucose CRM→FBA</td><td>u=12.52 mmol/gDW/hr &nbsp; |v|=12.52 mmol/gDW/hr</td></tr><tr><td>Peak acetate CRM→FBA</td><td>u=4.16 mmol/gDW/hr &nbsp; |v|=4.16 mmol/gDW/hr</td></tr></table>
     <h3>Configuration</h3>
     <pre class="config">crm.type  = adaptive
 crm.params = {&#x27;v&#x27;: {&#x27;glucose&#x27;: 12.0, &#x27;acetate&#x27;: 6.0}, &#x27;K&#x27;: {&#x27;glucose&#x27;: 0.5, &#x27;acetate&#x27;: 0.5}, &#x27;lam&#x27;: 1.2, &#x27;E_star&#x27;: 1.0, &#x27;A0&#x27;: {&#x27;glucose&#x27;: 0.9, &#x27;acetate&#x27;: 0.1}}
@@ -103,7 +112,7 @@ bounds = {&#x27;EX_o2_e&#x27;: {&#x27;lower&#x27;: -20.0, &#x27;upper&#x27;: 100
     <h3>Result</h3>
     <img src="tilman.png" alt="tilman" />
     <h3>Summary</h3>
-    <table><tr><td>Phenomenon</td><td>R-independent uptake</td></tr><tr><td>CRM type</td><td><code>macarthur</code></td></tr><tr><td>Steps × dt</td><td>300 × 0.05 hr</td></tr><tr><td>Wall-clock time</td><td>0.10 s</td></tr><tr><td>Final biomass</td><td>1185.977 gDW/L</td></tr><tr><td>Final glucose</td><td>0.000 mmol/L</td></tr><tr><td>Final acetate</td><td>0.000 mmol/L</td></tr></table>
+    <table><tr><td>Phenomenon</td><td>R-independent uptake</td></tr><tr><td>CRM type</td><td><code>macarthur</code></td></tr><tr><td>Steps × dt</td><td>300 × 0.05 hr</td></tr><tr><td>Wall-clock time</td><td>0.10 s</td></tr><tr><td>Final biomass</td><td>1185.977 gDW/L</td></tr><tr><td>Final glucose</td><td>0.000 mmol/L</td></tr><tr><td>Final acetate</td><td>0.000 mmol/L</td></tr><tr><td>Peak μ (FBA)</td><td>0.797 1/hr</td></tr><tr><td>Peak glucose CRM→FBA</td><td>u=8.00 mmol/gDW/hr &nbsp; |v|=8.00 mmol/gDW/hr</td></tr><tr><td>Peak acetate CRM→FBA</td><td>u=3.00 mmol/gDW/hr &nbsp; |v|=0.00 mmol/gDW/hr</td></tr></table>
     <h3>Configuration</h3>
     <pre class="config">crm.type  = macarthur
 crm.params = {&#x27;c&#x27;: {&#x27;glucose&#x27;: 8.0, &#x27;acetate&#x27;: 3.0}, &#x27;resource_mode&#x27;: &#x27;tilman&#x27;}
@@ -119,7 +128,7 @@ bounds = {&#x27;EX_o2_e&#x27;: {&#x27;lower&#x27;: -20.0, &#x27;upper&#x27;: 100
     <h3>Result</h3>
     <img src="cross_feed.png" alt="cross_feed" />
     <h3>Summary</h3>
-    <table><tr><td>Phenomenon</td><td>Metabolic leakage and re-uptake</td></tr><tr><td>CRM type</td><td><code>micrm</code></td></tr><tr><td>Steps × dt</td><td>360 × 0.05 hr</td></tr><tr><td>Wall-clock time</td><td>0.16 s</td></tr><tr><td>Final biomass</td><td>0.713 gDW/L</td></tr><tr><td>Final glucose</td><td>0.057 mmol/L</td></tr><tr><td>Final acetate</td><td>0.000 mmol/L</td></tr></table>
+    <table><tr><td>Phenomenon</td><td>Metabolic leakage and re-uptake</td></tr><tr><td>CRM type</td><td><code>micrm</code></td></tr><tr><td>Steps × dt</td><td>360 × 0.05 hr</td></tr><tr><td>Wall-clock time</td><td>0.15 s</td></tr><tr><td>Final biomass</td><td>0.713 gDW/L</td></tr><tr><td>Final glucose</td><td>0.057 mmol/L</td></tr><tr><td>Final acetate</td><td>0.000 mmol/L</td></tr><tr><td>Peak μ (FBA)</td><td>0.728 1/hr</td></tr><tr><td>Peak glucose CRM→FBA</td><td>u=8.00 mmol/gDW/hr &nbsp; |v|=8.00 mmol/gDW/hr</td></tr><tr><td>Peak acetate CRM→FBA</td><td>u=0.00 mmol/gDW/hr &nbsp; |v|=-0.00 mmol/gDW/hr</td></tr></table>
     <h3>Configuration</h3>
     <pre class="config">crm.type  = micrm
 crm.params = {&#x27;c&#x27;: {&#x27;glucose&#x27;: 1.0, &#x27;acetate&#x27;: 0.3}}
@@ -135,7 +144,7 @@ bounds = {&#x27;EX_o2_e&#x27;: {&#x27;lower&#x27;: -20.0, &#x27;upper&#x27;: 100
     <h3>Result</h3>
     <img src="nutrient_sweep.png" alt="nutrient_sweep" />
     <h3>Summary</h3>
-    <table><tr><td>Phenomenon</td><td>Saturating yield curve</td></tr><tr><td>CRM type</td><td><code>monod</code></td></tr><tr><td>Steps × dt</td><td>240 × 0.05 hr</td></tr><tr><td>Wall-clock time</td><td>1.10 s</td></tr><tr><td>Range</td><td>glucose0 ∈ [1.0, 80.0] mmol/L</td></tr></table>
+    <table><tr><td>Phenomenon</td><td>Saturating yield curve</td></tr><tr><td>CRM type</td><td><code>monod</code></td></tr><tr><td>Steps × dt</td><td>240 × 0.05 hr</td></tr><tr><td>Wall-clock time</td><td>1.17 s</td></tr><tr><td>Range</td><td>glucose0 ∈ [1.0, 80.0] mmol/L</td></tr></table>
     <h3>Configuration</h3>
     <pre class="config">crm.type  = monod
 crm.params = {&#x27;kinetic_params&#x27;: {&#x27;glucose&#x27;: (0.5, 10.0), &#x27;acetate&#x27;: (0.5, 3.0)}}
