@@ -15,6 +15,7 @@ from __future__ import annotations
 import argparse
 import datetime as _dt
 import html as _html
+import json as _json
 import os
 import socket
 import subprocess
@@ -23,7 +24,7 @@ import time
 import webbrowser
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional
+from typing import Any, Callable, Dict, List, Optional, Tuple
 
 import matplotlib
 matplotlib.use("Agg")
@@ -32,7 +33,7 @@ import numpy as np
 
 from process_bigraph import allocate_core
 
-from crm_dfba import CRMDynamicFBA
+from crm_dfba import CRMDynamicFBA, crm_dfba_spec
 from crm_dfba.models import get_model_spec
 
 
@@ -791,11 +792,113 @@ _STYLE = """
   .intro-card { background: #eef6ff; border: 1px solid #c6dcef; border-radius: 8px;
                 padding: 1rem 1.25rem; margin: 1rem 0; font-size: 13px; }
   .intro-card strong { color: #0b4c8a; }
+  .viz-img { max-width: 80%; display: block; margin: 0.5rem auto; }
+  .json-viewer { border: 1px solid #ddd; background: #fff; border-radius: 8px; padding: 10px; margin: 10px 0; }
+  .json-toolbar { display: flex; gap: 8px; align-items: center; margin-bottom: 8px; }
+  .json-toolbar input { flex: 1; padding: 6px 10px; border: 1px solid #ccc; border-radius: 6px; }
+  .json-toolbar button { padding: 6px 10px; border: 1px solid #ccc; border-radius: 6px; background: #f5f5f5; cursor: pointer; }
+  .json-toolbar button:hover { background: #eee; }
+  .json-status { font-size: 12px; color: #555; }
+  .json-layout { display: grid; grid-template-columns: 280px 1fr; gap: 10px; height: 400px; }
+  .json-nav { overflow: auto; border-right: 1px solid #eee; padding-right: 8px; }
+  .json-main { overflow: auto; padding-left: 6px; }
+  .json-item { padding: 5px 8px; border-radius: 6px; cursor: pointer; font-family: ui-monospace, monospace; font-size: 12px; }
+  .json-item:hover { background: #f3f3f3; }
+  .json-item.active { background: #e9eefc; }
+  .json-path { font-family: ui-monospace, monospace; font-size: 12px; margin-bottom: 8px; color: #333; }
+  .json-value pre { background: #f8f8f8; border: 1px solid #eee; border-radius: 8px; padding: 10px; overflow: auto; font-size: 12px; }
+  .json-pill { display: inline-block; padding: 2px 8px; border: 1px solid #ddd; border-radius: 999px; font-size: 12px; margin-right: 6px; background: #fafafa; }
+"""
+
+
+_JSON_NAVIGATOR_JS = """
+<script>
+(function(){
+  function isObj(x){ return x && typeof x === "object" && !Array.isArray(x); }
+  function getAt(root, path){
+    let c = root;
+    for (const p of path){ if (c==null) return undefined; c = Array.isArray(c) ? c[Number(p)] : c[p]; }
+    return c;
+  }
+  function renderVal(el, v){
+    el.innerHTML = "";
+    const pre = document.createElement("pre");
+    if (v === null || typeof v !== "object"){ pre.textContent = JSON.stringify(v, null, 2); }
+    else if (Array.isArray(v)){
+      el.innerHTML = `<span class="json-pill">array [${v.length}]</span>`;
+      pre.textContent = JSON.stringify(v, null, 2);
+    } else {
+      const keys = Object.keys(v);
+      el.innerHTML = `<span class="json-pill">object {${keys.length} keys}</span>`;
+      pre.textContent = JSON.stringify(v, null, 2);
+    }
+    el.appendChild(pre);
+  }
+  document.querySelectorAll(".json-viewer").forEach(viewer => {
+    const testId = viewer.dataset.test;
+    const dataEl = document.getElementById("json-data-" + testId);
+    if (!dataEl) return;
+    const root = JSON.parse(dataEl.textContent);
+    const nav = viewer.querySelector(".json-nav");
+    const pathEl = viewer.querySelector(".json-path");
+    const valEl = viewer.querySelector(".json-value");
+    const search = viewer.querySelector(".json-search");
+    const resetBtn = viewer.querySelector(".json-reset");
+    const status = viewer.querySelector(".json-status");
+
+    function showKeys(obj, basePath){
+      nav.innerHTML = "";
+      const keys = Object.keys(obj);
+      status.textContent = keys.length + " keys";
+      keys.forEach(k => {
+        const item = document.createElement("div");
+        item.className = "json-item";
+        const v = obj[k];
+        const hint = v === null ? "null" : Array.isArray(v) ? `[${v.length}]` : typeof v === "object" ? "{...}" : JSON.stringify(v).slice(0,30);
+        item.textContent = k + "  " + hint;
+        item.onclick = () => {
+          nav.querySelectorAll(".json-item").forEach(x => x.classList.remove("active"));
+          item.classList.add("active");
+          const path = basePath.concat([k]);
+          pathEl.textContent = path.join(".");
+          const val = getAt(root, path);
+          if (isObj(val) && Object.keys(val).length > 0){
+            showKeys(val, path);
+          } else {
+            renderVal(valEl, val);
+          }
+        };
+        nav.appendChild(item);
+      });
+    }
+    function reset(){ pathEl.textContent = ""; valEl.innerHTML = ""; showKeys(root, []); }
+    resetBtn.onclick = reset;
+    search.oninput = () => {
+      const q = search.value.toLowerCase().trim();
+      if (!q){ reset(); return; }
+      nav.querySelectorAll(".json-item").forEach(el => {
+        el.style.display = el.textContent.toLowerCase().includes(q) ? "" : "none";
+      });
+    };
+    reset();
+  });
+})();
+</script>
 """
 
 
 def _pretty_name(name: str) -> str:
     return name.replace("_", " ").title()
+
+
+def _jsonable(obj: Any):
+    """Fallback for json.dumps on non-serializable objects in the composite spec."""
+    if isinstance(obj, tuple):
+        return list(obj)
+    try:
+        return str(obj)
+    except Exception:
+        return repr(obj)
 
 
 def _short_cfg(cfg: Dict[str, Any]) -> str:
@@ -831,6 +934,105 @@ def _collect_species_cfgs(exp: Experiment):
     if exp.runner_override is _simulate_community:
         return [(sp["name"], sp["build_cfg"]()) for sp in exp.extra_meta["species"]]
     return [("", exp.build_cfg())]
+
+
+def _build_composite_state(exp: Experiment) -> Dict[str, Any]:
+    """Assemble a process-bigraph state dict for this experiment.
+
+    Single species -> one CRM/FBA pair. Community -> one pair per species,
+    all sharing the substrate pool; each species has its own biomass store.
+    """
+    species_cfgs = _collect_species_cfgs(exp)
+    resources = list(species_cfgs[0][1]["substrate_update_reactions"].keys())
+
+    state: Dict[str, Any] = {
+        "substrates": {r: float(exp.initial_substrates.get(r, 0.0)) for r in resources},
+    }
+
+    if exp.runner_override is _simulate_community:
+        species_meta = exp.extra_meta["species"]
+        biomass_by_name = {sp["name"]: float(sp.get("initial_biomass", exp.initial_biomass))
+                           for sp in species_meta}
+        for sp_name, sp_cfg in species_cfgs:
+            bio_key = f"biomass_{sp_name}"
+            up_key = f"uptakes_{sp_name}"
+            state[bio_key] = biomass_by_name.get(sp_name, exp.initial_biomass)
+            state[up_key] = {r: 0.0 for r in resources}
+            state[f"interval_{sp_name}"] = float(exp.dt)
+            sub_spec = crm_dfba_spec(
+                {k: v for k, v in sp_cfg.items() if not k.startswith("_")},
+                dt=exp.dt,
+                crm_name=f"crm_{sp_name}",
+                fba_name=f"fba_{sp_name}",
+                store_names={
+                    "biomass": bio_key,
+                    "uptakes": up_key,
+                    "interval": f"interval_{sp_name}",
+                },
+            )
+            state.update(sub_spec)
+    else:
+        cfg = {k: v for k, v in species_cfgs[0][1].items() if not k.startswith("_")}
+        state["biomass"] = float(exp.initial_biomass)
+        state["uptakes"] = {r: 0.0 for r in resources}
+        state["interval"] = float(exp.dt)
+        state.update(crm_dfba_spec(cfg, dt=exp.dt))
+
+    return state
+
+
+def _composite_schema(state: Dict[str, Any]) -> Dict[str, str]:
+    """Schema block marking uptake/interval stores as overwrite so the CRM
+    output replaces (rather than accumulates into) the bus each tick.
+    """
+    schema = {}
+    for key in state:
+        if key.startswith("uptakes"):
+            schema[key] = "overwrite[map[float]]"
+        elif key.startswith("interval"):
+            schema[key] = "overwrite[float]"
+        elif key == "substrates":
+            schema[key] = "map[concentration]"
+        elif key.startswith("biomass"):
+            schema[key] = "mass"
+    return schema
+
+
+def _write_bigraph_diagram(exp: Experiment, out_dir: Path) -> Optional[str]:
+    """Render a composition diagram with bigraph-viz. Returns the relative
+    path to the PNG, or None if rendering failed / bigraph-viz is missing.
+    """
+    try:
+        from bigraph_viz import plot_bigraph
+    except Exception as e:
+        print(f"       bigraph-viz unavailable ({e}); skipping diagram")
+        return None
+
+    state = _build_composite_state(exp)
+    filename = f"{exp.name}_bigraph"
+    try:
+        plot_bigraph(
+            state=state,
+            out_dir=str(out_dir),
+            filename=filename,
+            file_format="png",
+            show_compiled_state=False,
+        )
+    except Exception as e:
+        print(f"       bigraph diagram failed for {exp.name}: {e}")
+        return None
+    return f"{filename}.png"
+
+
+def _json_for_navigator(exp: Experiment) -> Dict[str, Any]:
+    """Produce a JSON-safe composite document (schema + state) for the
+    in-report navigator widget.
+    """
+    state = _build_composite_state(exp)
+    return {
+        "schema": _composite_schema(state),
+        "state": state,
+    }
 
 
 def _section_html(r: RunResult) -> str:
@@ -903,6 +1105,33 @@ def _section_html(r: RunResult) -> str:
         for sp_name, sp_cfg in species_cfgs
     )
 
+    bigraph_rel = exp.extra_meta.get("_bigraph_rel")
+    bigraph_html = (
+        f'<h3>Composition</h3>\n'
+        f'<img src="{bigraph_rel}" alt="{exp.name} bigraph" class="viz-img" />\n'
+        if bigraph_rel else ""
+    )
+
+    doc_json = _json_for_navigator(exp)
+    json_payload = _json.dumps(doc_json, default=_jsonable)
+    navigator_html = f"""<h3>Composite Document</h3>
+    <div class="json-viewer" data-test="{exp.name}">
+      <div class="json-toolbar">
+        <input class="json-search" placeholder="Search keys..." />
+        <button type="button" class="json-reset">Top-level</button>
+        <span class="json-status"></span>
+      </div>
+      <div class="json-layout">
+        <div class="json-nav"></div>
+        <div class="json-main">
+          <div class="json-path"></div>
+          <div class="json-value"></div>
+        </div>
+      </div>
+      <script type="application/json" id="json-data-{exp.name}">{json_payload}</script>
+    </div>
+"""
+
     return f"""
   <section id="{exp.name}">
     <h2>{_html.escape(_pretty_name(exp.name))}</h2>
@@ -910,11 +1139,11 @@ def _section_html(r: RunResult) -> str:
     <p style="margin-top:0.8rem">{_html.escape(exp.description)}</p>
     <h3>Result</h3>
     <img src="{img_rel}" alt="{exp.name}" />
-    <h3>Summary</h3>
+    {bigraph_html}<h3>Summary</h3>
     <table>{''.join(rows)}</table>
     <h3>Configuration</h3>
     <pre class="config">{_html.escape(cfg_blocks)}</pre>
-  </section>
+    {navigator_html}  </section>
 """
 
 
@@ -1058,6 +1287,7 @@ the CRM envelope so the coupling is visible at a glance.
 
 {_reproduce_section(meta)}
 
+{_JSON_NAVIGATOR_JS}
 </body>
 </html>
 """
@@ -1084,6 +1314,9 @@ def run_all(only: Optional[List[str]] = None) -> List[RunResult]:
         DOC_DIR.mkdir(parents=True, exist_ok=True)
         _plot_for(result, img_path)
         print(f"       wall={result.wall_clock_s:.2f}s  plot={img_path.relative_to(REPO_ROOT)}")
+        bigraph_rel = _write_bigraph_diagram(exp, DOC_DIR)
+        if bigraph_rel:
+            exp.extra_meta["_bigraph_rel"] = bigraph_rel
         results.append(result)
     return results
 

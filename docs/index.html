@@ -44,6 +44,22 @@
   .intro-card { background: #eef6ff; border: 1px solid #c6dcef; border-radius: 8px;
                 padding: 1rem 1.25rem; margin: 1rem 0; font-size: 13px; }
   .intro-card strong { color: #0b4c8a; }
+  .viz-img { max-width: 80%; display: block; margin: 0.5rem auto; }
+  .json-viewer { border: 1px solid #ddd; background: #fff; border-radius: 8px; padding: 10px; margin: 10px 0; }
+  .json-toolbar { display: flex; gap: 8px; align-items: center; margin-bottom: 8px; }
+  .json-toolbar input { flex: 1; padding: 6px 10px; border: 1px solid #ccc; border-radius: 6px; }
+  .json-toolbar button { padding: 6px 10px; border: 1px solid #ccc; border-radius: 6px; background: #f5f5f5; cursor: pointer; }
+  .json-toolbar button:hover { background: #eee; }
+  .json-status { font-size: 12px; color: #555; }
+  .json-layout { display: grid; grid-template-columns: 280px 1fr; gap: 10px; height: 400px; }
+  .json-nav { overflow: auto; border-right: 1px solid #eee; padding-right: 8px; }
+  .json-main { overflow: auto; padding-left: 6px; }
+  .json-item { padding: 5px 8px; border-radius: 6px; cursor: pointer; font-family: ui-monospace, monospace; font-size: 12px; }
+  .json-item:hover { background: #f3f3f3; }
+  .json-item.active { background: #e9eefc; }
+  .json-path { font-family: ui-monospace, monospace; font-size: 12px; margin-bottom: 8px; color: #333; }
+  .json-value pre { background: #f8f8f8; border: 1px solid #eee; border-radius: 8px; padding: 10px; overflow: auto; font-size: 12px; }
+  .json-pill { display: inline-block; padding: 2px 8px; border: 1px solid #ddd; border-radius: 999px; font-size: 12px; margin-right: 6px; background: #fafafa; }
 </style>
 </head>
 <body>
@@ -62,9 +78,9 @@ the CRM envelope so the coupling is visible at a glance.
 </div>
 
 <div class="meta">
-  <div><strong>Generated:</strong> 2026-04-15 15:38:14 UTC</div>
+  <div><strong>Generated:</strong> 2026-04-15 15:46:10 UTC</div>
   <div><strong>On:</strong> LT-0919936</div>
-  <div><strong>Commit:</strong> <a href="https://github.com/vivarium-collective/CRM-FBA/commit/7f026147faaacfebdfcb01d28588e6009426d7de"><code>7f026147</code></a></div>
+  <div><strong>Commit:</strong> <a href="https://github.com/vivarium-collective/CRM-FBA/commit/936698b1db943e6a0c970e11e9fc34b47b327c99"><code>936698b1</code></a></div>
   <div><strong>Source:</strong> <a href="https://github.com/vivarium-collective/CRM-FBA">vivarium-collective/CRM-FBA</a></div>
 </div>
 
@@ -88,7 +104,9 @@ the CRM envelope so the coupling is visible at a glance.
     <p style="margin-top:0.8rem">Classical Monod CRM coupled to the E. coli core GSM. With high initial glucose, FBA preferentially oxidizes glucose and secretes some acetate. Once glucose is depleted, the Monod uptake rate on acetate becomes non-negligible and FBA switches to acetate consumption — the canonical diauxic shift.</p>
     <h3>Result</h3>
     <img src="diauxie.png" alt="diauxie" />
-    <h3>Summary</h3>
+    <h3>Composition</h3>
+<img src="diauxie_bigraph.png" alt="diauxie bigraph" class="viz-img" />
+<h3>Summary</h3>
     <table><tr><td>Phenomenon</td><td>Sequential substrate utilization</td></tr><tr><td>GSM</td><td><code>textbook</code> — Escherichia coli (core GSM, 95 rxns)<br><span style='font-size:12px;color:#666'>biomass reaction: <code>Biomass_Ecoli_core</code></span></td></tr><tr><td>CRM</td><td><code>monod</code></td></tr><tr><td>Integration</td><td>360 steps × 0.05 hr = 18.0 hr simulated</td></tr><tr><td>Wall-clock time</td><td>0.21 s</td></tr><tr><td>Final biomass</td><td>1.377 gDW/L</td></tr><tr><td>Final glucose</td><td>0.000 mmol/L</td></tr><tr><td>Final acetate</td><td>0.000 mmol/L</td></tr><tr><td>Peak μ (FBA)</td><td>0.882 1/hr</td></tr><tr><td>Peak glucose CRM→FBA</td><td>u=9.68 &nbsp; · &nbsp; |v|=9.68 &nbsp; <span style='font-size:11px;color:#666'>mmol/gDW/hr</span></td></tr></table>
     <h3>Configuration</h3>
     <pre class="config">model_file        = &#x27;textbook&#x27;   # Escherichia coli (core GSM, 95 rxns)
@@ -97,6 +115,22 @@ crm.type          = monod
 crm.params        = {&#x27;kinetic_params&#x27;: {&#x27;glucose&#x27;: (0.5, 10.0), &#x27;acetate&#x27;: (0.5, 3.0)}}
 substrate_update_reactions = {&#x27;glucose&#x27;: &#x27;EX_glc__D_e&#x27;, &#x27;acetate&#x27;: &#x27;EX_ac_e&#x27;}
 bounds            = {&#x27;EX_o2_e&#x27;: {&#x27;lower&#x27;: -20.0, &#x27;upper&#x27;: 1000.0}, &#x27;ATPM&#x27;: {&#x27;lower&#x27;: 1.0, &#x27;upper&#x27;: 1.0}}</pre>
+    <h3>Composite Document</h3>
+    <div class="json-viewer" data-test="diauxie">
+      <div class="json-toolbar">
+        <input class="json-search" placeholder="Search keys..." />
+        <button type="button" class="json-reset">Top-level</button>
+        <span class="json-status"></span>
+      </div>
+      <div class="json-layout">
+        <div class="json-nav"></div>
+        <div class="json-main">
+          <div class="json-path"></div>
+          <div class="json-value"></div>
+        </div>
+      </div>
+      <script type="application/json" id="json-data-diauxie">{"schema": {"substrates": "map[concentration]", "biomass": "mass", "uptakes": "overwrite[map[float]]", "interval": "overwrite[float]"}, "state": {"substrates": {"glucose": 15.0, "acetate": 0.0}, "biomass": 0.01, "uptakes": {"glucose": 0.0, "acetate": 0.0}, "interval": 0.05, "crm": {"_type": "process", "address": "local:!crm_dfba.processes.crm.CRMProcess", "config": {"resources": ["glucose", "acetate"], "crm": {"type": "monod", "params": {"kinetic_params": {"glucose": [0.5, 10.0], "acetate": [0.5, 3.0]}}}}, "interval": 0.05, "inputs": {"substrates": ["substrates"], "biomass": ["biomass"]}, "outputs": {"uptakes": ["uptakes"], "interval": ["interval"]}}, "fba": {"_type": "step", "address": "local:!crm_dfba.processes.fba.FBAStep", "config": {"model_file": "textbook", "substrate_update_reactions": {"glucose": "EX_glc__D_e", "acetate": "EX_ac_e"}, "bounds": {"EX_o2_e": {"lower": -20.0, "upper": 1000.0}, "ATPM": {"lower": 1.0, "upper": 1.0}}, "biomass_reaction": "Biomass_Ecoli_core"}, "inputs": {"uptakes": ["uptakes"], "substrates": ["substrates"], "biomass": ["biomass"], "interval": ["interval"]}, "outputs": {"substrates": ["substrates"], "biomass": ["biomass"]}}}}</script>
+    </div>
   </section>
 
   <section id="overflow">
@@ -105,8 +139,10 @@ bounds            = {&#x27;EX_o2_e&#x27;: {&#x27;lower&#x27;: -20.0, &#x27;upper
     <p style="margin-top:0.8rem">MacArthur external-resource CRM drives glucose uptake while the oxygen exchange is tightly capped (EX_o2_e lower = -5). Under O2 limitation the LP cannot fully oxidize the influx and secretes acetate as overflow — a Crabtree-like phenotype — even though no acetate was initially present.</p>
     <h3>Result</h3>
     <img src="overflow.png" alt="overflow" />
-    <h3>Summary</h3>
-    <table><tr><td>Phenomenon</td><td>Crabtree-like acetate secretion</td></tr><tr><td>GSM</td><td><code>textbook</code> — Escherichia coli (core GSM, 95 rxns)<br><span style='font-size:12px;color:#666'>biomass reaction: <code>Biomass_Ecoli_core</code></span></td></tr><tr><td>CRM</td><td><code>macarthur</code></td></tr><tr><td>Integration</td><td>300 steps × 0.05 hr = 15.0 hr simulated</td></tr><tr><td>Wall-clock time</td><td>0.11 s</td></tr><tr><td>Final biomass</td><td>0.908 gDW/L</td></tr><tr><td>Final glucose</td><td>0.003 mmol/L</td></tr><tr><td>Final acetate</td><td>1.562 mmol/L</td></tr><tr><td>Peak μ (FBA)</td><td>0.608 1/hr</td></tr><tr><td>Peak glucose CRM→FBA</td><td>u=14.40 &nbsp; · &nbsp; |v|=14.40 &nbsp; <span style='font-size:11px;color:#666'>mmol/gDW/hr</span></td></tr><tr><td>Peak acetate CRM→FBA</td><td>u=4.14 &nbsp; · &nbsp; |v|=3.35 &nbsp; <span style='font-size:11px;color:#666'>mmol/gDW/hr</span></td></tr></table>
+    <h3>Composition</h3>
+<img src="overflow_bigraph.png" alt="overflow bigraph" class="viz-img" />
+<h3>Summary</h3>
+    <table><tr><td>Phenomenon</td><td>Crabtree-like acetate secretion</td></tr><tr><td>GSM</td><td><code>textbook</code> — Escherichia coli (core GSM, 95 rxns)<br><span style='font-size:12px;color:#666'>biomass reaction: <code>Biomass_Ecoli_core</code></span></td></tr><tr><td>CRM</td><td><code>macarthur</code></td></tr><tr><td>Integration</td><td>300 steps × 0.05 hr = 15.0 hr simulated</td></tr><tr><td>Wall-clock time</td><td>0.10 s</td></tr><tr><td>Final biomass</td><td>0.908 gDW/L</td></tr><tr><td>Final glucose</td><td>0.003 mmol/L</td></tr><tr><td>Final acetate</td><td>1.562 mmol/L</td></tr><tr><td>Peak μ (FBA)</td><td>0.608 1/hr</td></tr><tr><td>Peak glucose CRM→FBA</td><td>u=14.40 &nbsp; · &nbsp; |v|=14.40 &nbsp; <span style='font-size:11px;color:#666'>mmol/gDW/hr</span></td></tr><tr><td>Peak acetate CRM→FBA</td><td>u=4.14 &nbsp; · &nbsp; |v|=3.35 &nbsp; <span style='font-size:11px;color:#666'>mmol/gDW/hr</span></td></tr></table>
     <h3>Configuration</h3>
     <pre class="config">model_file        = &#x27;textbook&#x27;   # Escherichia coli (core GSM, 95 rxns)
 biomass_reaction  = &#x27;Biomass_Ecoli_core&#x27;
@@ -114,6 +150,22 @@ crm.type          = macarthur
 crm.params        = {&#x27;c&#x27;: {&#x27;glucose&#x27;: 1.2, &#x27;acetate&#x27;: 0.4}, &#x27;resource_mode&#x27;: &#x27;external&#x27;}
 substrate_update_reactions = {&#x27;glucose&#x27;: &#x27;EX_glc__D_e&#x27;, &#x27;acetate&#x27;: &#x27;EX_ac_e&#x27;}
 bounds            = {&#x27;EX_o2_e&#x27;: {&#x27;lower&#x27;: -5.0, &#x27;upper&#x27;: 1000.0}, &#x27;ATPM&#x27;: {&#x27;lower&#x27;: 1.0, &#x27;upper&#x27;: 1.0}}</pre>
+    <h3>Composite Document</h3>
+    <div class="json-viewer" data-test="overflow">
+      <div class="json-toolbar">
+        <input class="json-search" placeholder="Search keys..." />
+        <button type="button" class="json-reset">Top-level</button>
+        <span class="json-status"></span>
+      </div>
+      <div class="json-layout">
+        <div class="json-nav"></div>
+        <div class="json-main">
+          <div class="json-path"></div>
+          <div class="json-value"></div>
+        </div>
+      </div>
+      <script type="application/json" id="json-data-overflow">{"schema": {"substrates": "map[concentration]", "biomass": "mass", "uptakes": "overwrite[map[float]]", "interval": "overwrite[float]"}, "state": {"substrates": {"glucose": 12.0, "acetate": 0.0}, "biomass": 0.01, "uptakes": {"glucose": 0.0, "acetate": 0.0}, "interval": 0.05, "crm": {"_type": "process", "address": "local:!crm_dfba.processes.crm.CRMProcess", "config": {"resources": ["glucose", "acetate"], "crm": {"type": "macarthur", "params": {"c": {"glucose": 1.2, "acetate": 0.4}, "resource_mode": "external"}}}, "interval": 0.05, "inputs": {"substrates": ["substrates"], "biomass": ["biomass"]}, "outputs": {"uptakes": ["uptakes"], "interval": ["interval"]}}, "fba": {"_type": "step", "address": "local:!crm_dfba.processes.fba.FBAStep", "config": {"model_file": "textbook", "substrate_update_reactions": {"glucose": "EX_glc__D_e", "acetate": "EX_ac_e"}, "bounds": {"EX_o2_e": {"lower": -5.0, "upper": 1000.0}, "ATPM": {"lower": 1.0, "upper": 1.0}}, "biomass_reaction": "Biomass_Ecoli_core"}, "inputs": {"uptakes": ["uptakes"], "substrates": ["substrates"], "biomass": ["biomass"], "interval": ["interval"]}, "outputs": {"substrates": ["substrates"], "biomass": ["biomass"]}}}}</script>
+    </div>
   </section>
 
   <section id="adaptive">
@@ -122,8 +174,10 @@ bounds            = {&#x27;EX_o2_e&#x27;: {&#x27;lower&#x27;: -5.0, &#x27;upper&
     <p style="margin-top:0.8rem">Adaptive CRM with an internal allocation vector A_a per resource, constrained by an energy budget E_star. Initial allocation is skewed to glucose (A0=[0.95, 0.05]) and the oxygen exchange is capped so FBA secretes acetate as overflow while glucose is abundant. Once glucose depletes, r_glucose → 0 so the gradient on A_glucose vanishes while A_acetate keeps climbing under the Picciani-Mori rule — the allocation vector reallocates toward acetate and growth continues on the acetate pool that the cell itself produced.</p>
     <h3>Result</h3>
     <img src="adaptive.png" alt="adaptive" />
-    <h3>Summary</h3>
-    <table><tr><td>Phenomenon</td><td>Dynamic trait reallocation</td></tr><tr><td>GSM</td><td><code>textbook</code> — Escherichia coli (core GSM, 95 rxns)<br><span style='font-size:12px;color:#666'>biomass reaction: <code>Biomass_Ecoli_core</code></span></td></tr><tr><td>CRM</td><td><code>adaptive</code></td></tr><tr><td>Integration</td><td>480 steps × 0.05 hr = 24.0 hr simulated</td></tr><tr><td>Wall-clock time</td><td>0.36 s</td></tr><tr><td>Final biomass</td><td>0.784 gDW/L</td></tr><tr><td>Final glucose</td><td>0.000 mmol/L</td></tr><tr><td>Final acetate</td><td>0.019 mmol/L</td></tr><tr><td>Peak μ (FBA)</td><td>0.493 1/hr</td></tr><tr><td>Peak glucose CRM→FBA</td><td>u=9.51 &nbsp; · &nbsp; |v|=9.51 &nbsp; <span style='font-size:11px;color:#666'>mmol/gDW/hr</span></td></tr><tr><td>Peak acetate CRM→FBA</td><td>u=4.61 &nbsp; · &nbsp; |v|=4.61 &nbsp; <span style='font-size:11px;color:#666'>mmol/gDW/hr</span></td></tr></table>
+    <h3>Composition</h3>
+<img src="adaptive_bigraph.png" alt="adaptive bigraph" class="viz-img" />
+<h3>Summary</h3>
+    <table><tr><td>Phenomenon</td><td>Dynamic trait reallocation</td></tr><tr><td>GSM</td><td><code>textbook</code> — Escherichia coli (core GSM, 95 rxns)<br><span style='font-size:12px;color:#666'>biomass reaction: <code>Biomass_Ecoli_core</code></span></td></tr><tr><td>CRM</td><td><code>adaptive</code></td></tr><tr><td>Integration</td><td>480 steps × 0.05 hr = 24.0 hr simulated</td></tr><tr><td>Wall-clock time</td><td>0.37 s</td></tr><tr><td>Final biomass</td><td>0.784 gDW/L</td></tr><tr><td>Final glucose</td><td>0.000 mmol/L</td></tr><tr><td>Final acetate</td><td>0.019 mmol/L</td></tr><tr><td>Peak μ (FBA)</td><td>0.493 1/hr</td></tr><tr><td>Peak glucose CRM→FBA</td><td>u=9.51 &nbsp; · &nbsp; |v|=9.51 &nbsp; <span style='font-size:11px;color:#666'>mmol/gDW/hr</span></td></tr><tr><td>Peak acetate CRM→FBA</td><td>u=4.61 &nbsp; · &nbsp; |v|=4.61 &nbsp; <span style='font-size:11px;color:#666'>mmol/gDW/hr</span></td></tr></table>
     <h3>Configuration</h3>
     <pre class="config">model_file        = &#x27;textbook&#x27;   # Escherichia coli (core GSM, 95 rxns)
 biomass_reaction  = &#x27;Biomass_Ecoli_core&#x27;
@@ -131,6 +185,22 @@ crm.type          = adaptive
 crm.params        = {&#x27;v&#x27;: {&#x27;glucose&#x27;: 10.0, &#x27;acetate&#x27;: 5.0}, &#x27;K&#x27;: {&#x27;glucose&#x27;: 0.5, &#x27;acetate&#x27;: 0.5}, &#x27;lam&#x27;: 0.6, &#x27;E_star&#x27;: 1.0, &#x27;A0&#x27;: {&#x27;glucose&#x27;: 0.9, &#x27;acetate&#x27;: 0.1}, &#x27;n_substeps&#x27;: 50}
 substrate_update_reactions = {&#x27;glucose&#x27;: &#x27;EX_glc__D_e&#x27;, &#x27;acetate&#x27;: &#x27;EX_ac_e&#x27;}
 bounds            = {&#x27;EX_o2_e&#x27;: {&#x27;lower&#x27;: -6.0, &#x27;upper&#x27;: 1000.0}, &#x27;ATPM&#x27;: {&#x27;lower&#x27;: 1.0, &#x27;upper&#x27;: 1.0}}</pre>
+    <h3>Composite Document</h3>
+    <div class="json-viewer" data-test="adaptive">
+      <div class="json-toolbar">
+        <input class="json-search" placeholder="Search keys..." />
+        <button type="button" class="json-reset">Top-level</button>
+        <span class="json-status"></span>
+      </div>
+      <div class="json-layout">
+        <div class="json-nav"></div>
+        <div class="json-main">
+          <div class="json-path"></div>
+          <div class="json-value"></div>
+        </div>
+      </div>
+      <script type="application/json" id="json-data-adaptive">{"schema": {"substrates": "map[concentration]", "biomass": "mass", "uptakes": "overwrite[map[float]]", "interval": "overwrite[float]"}, "state": {"substrates": {"glucose": 10.0, "acetate": 0.05}, "biomass": 0.01, "uptakes": {"glucose": 0.0, "acetate": 0.0}, "interval": 0.05, "crm": {"_type": "process", "address": "local:!crm_dfba.processes.crm.CRMProcess", "config": {"resources": ["glucose", "acetate"], "crm": {"type": "adaptive", "params": {"v": {"glucose": 10.0, "acetate": 5.0}, "K": {"glucose": 0.5, "acetate": 0.5}, "lam": 0.6, "E_star": 1.0, "A0": {"glucose": 0.9, "acetate": 0.1}, "n_substeps": 50}}}, "interval": 0.05, "inputs": {"substrates": ["substrates"], "biomass": ["biomass"]}, "outputs": {"uptakes": ["uptakes"], "interval": ["interval"]}}, "fba": {"_type": "step", "address": "local:!crm_dfba.processes.fba.FBAStep", "config": {"model_file": "textbook", "substrate_update_reactions": {"glucose": "EX_glc__D_e", "acetate": "EX_ac_e"}, "bounds": {"EX_o2_e": {"lower": -6.0, "upper": 1000.0}, "ATPM": {"lower": 1.0, "upper": 1.0}}, "biomass_reaction": "Biomass_Ecoli_core"}, "inputs": {"uptakes": ["uptakes"], "substrates": ["substrates"], "biomass": ["biomass"], "interval": ["interval"]}, "outputs": {"substrates": ["substrates"], "biomass": ["biomass"]}}}}</script>
+    </div>
   </section>
 
   <section id="tilman">
@@ -139,7 +209,9 @@ bounds            = {&#x27;EX_o2_e&#x27;: {&#x27;lower&#x27;: -6.0, &#x27;upper&
     <p style="margin-top:0.8rem">MacArthur CRM in &#x27;tilman&#x27; mode: uptake rate u_a = c_a is independent of R_a. FBA drives glucose hard and at a constant rate until the extracellular concentration is exhausted, giving a sharply-cornered depletion profile characteristic of Tilman-style resource competition.</p>
     <h3>Result</h3>
     <img src="tilman.png" alt="tilman" />
-    <h3>Summary</h3>
+    <h3>Composition</h3>
+<img src="tilman_bigraph.png" alt="tilman bigraph" class="viz-img" />
+<h3>Summary</h3>
     <table><tr><td>Phenomenon</td><td>R-independent uptake</td></tr><tr><td>GSM</td><td><code>textbook</code> — Escherichia coli (core GSM, 95 rxns)<br><span style='font-size:12px;color:#666'>biomass reaction: <code>Biomass_Ecoli_core</code></span></td></tr><tr><td>CRM</td><td><code>macarthur</code></td></tr><tr><td>Integration</td><td>300 steps × 0.05 hr = 15.0 hr simulated</td></tr><tr><td>Wall-clock time</td><td>0.10 s</td></tr><tr><td>Final biomass</td><td>1185.977 gDW/L</td></tr><tr><td>Final glucose</td><td>0.000 mmol/L</td></tr><tr><td>Final acetate</td><td>0.000 mmol/L</td></tr><tr><td>Peak μ (FBA)</td><td>0.797 1/hr</td></tr><tr><td>Peak glucose CRM→FBA</td><td>u=8.00 &nbsp; · &nbsp; |v|=8.00 &nbsp; <span style='font-size:11px;color:#666'>mmol/gDW/hr</span></td></tr><tr><td>Peak acetate CRM→FBA</td><td>u=3.00 &nbsp; · &nbsp; |v|=0.00 &nbsp; <span style='font-size:11px;color:#666'>mmol/gDW/hr</span></td></tr></table>
     <h3>Configuration</h3>
     <pre class="config">model_file        = &#x27;textbook&#x27;   # Escherichia coli (core GSM, 95 rxns)
@@ -148,6 +220,22 @@ crm.type          = macarthur
 crm.params        = {&#x27;c&#x27;: {&#x27;glucose&#x27;: 8.0, &#x27;acetate&#x27;: 3.0}, &#x27;resource_mode&#x27;: &#x27;tilman&#x27;}
 substrate_update_reactions = {&#x27;glucose&#x27;: &#x27;EX_glc__D_e&#x27;, &#x27;acetate&#x27;: &#x27;EX_ac_e&#x27;}
 bounds            = {&#x27;EX_o2_e&#x27;: {&#x27;lower&#x27;: -20.0, &#x27;upper&#x27;: 1000.0}, &#x27;ATPM&#x27;: {&#x27;lower&#x27;: 1.0, &#x27;upper&#x27;: 1.0}}</pre>
+    <h3>Composite Document</h3>
+    <div class="json-viewer" data-test="tilman">
+      <div class="json-toolbar">
+        <input class="json-search" placeholder="Search keys..." />
+        <button type="button" class="json-reset">Top-level</button>
+        <span class="json-status"></span>
+      </div>
+      <div class="json-layout">
+        <div class="json-nav"></div>
+        <div class="json-main">
+          <div class="json-path"></div>
+          <div class="json-value"></div>
+        </div>
+      </div>
+      <script type="application/json" id="json-data-tilman">{"schema": {"substrates": "map[concentration]", "biomass": "mass", "uptakes": "overwrite[map[float]]", "interval": "overwrite[float]"}, "state": {"substrates": {"glucose": 6.0, "acetate": 0.0}, "biomass": 0.01, "uptakes": {"glucose": 0.0, "acetate": 0.0}, "interval": 0.05, "crm": {"_type": "process", "address": "local:!crm_dfba.processes.crm.CRMProcess", "config": {"resources": ["glucose", "acetate"], "crm": {"type": "macarthur", "params": {"c": {"glucose": 8.0, "acetate": 3.0}, "resource_mode": "tilman"}}}, "interval": 0.05, "inputs": {"substrates": ["substrates"], "biomass": ["biomass"]}, "outputs": {"uptakes": ["uptakes"], "interval": ["interval"]}}, "fba": {"_type": "step", "address": "local:!crm_dfba.processes.fba.FBAStep", "config": {"model_file": "textbook", "substrate_update_reactions": {"glucose": "EX_glc__D_e", "acetate": "EX_ac_e"}, "bounds": {"EX_o2_e": {"lower": -20.0, "upper": 1000.0}, "ATPM": {"lower": 1.0, "upper": 1.0}}, "biomass_reaction": "Biomass_Ecoli_core"}, "inputs": {"uptakes": ["uptakes"], "substrates": ["substrates"], "biomass": ["biomass"], "interval": ["interval"]}, "outputs": {"substrates": ["substrates"], "biomass": ["biomass"]}}}}</script>
+    </div>
   </section>
 
   <section id="cross_feed">
@@ -156,7 +244,9 @@ bounds            = {&#x27;EX_o2_e&#x27;: {&#x27;lower&#x27;: -20.0, &#x27;upper
     <p style="margin-top:0.8rem">MiCRM-style mass-action uptake of glucose and acetate on a single organism. FBA secretes acetate as a byproduct while glucose is abundant (positive extracellular acetate trajectory); once glucose drops, the accumulated acetate pool supports a second growth phase — a single-species analogue of community cross-feeding.</p>
     <h3>Result</h3>
     <img src="cross_feed.png" alt="cross_feed" />
-    <h3>Summary</h3>
+    <h3>Composition</h3>
+<img src="cross_feed_bigraph.png" alt="cross_feed bigraph" class="viz-img" />
+<h3>Summary</h3>
     <table><tr><td>Phenomenon</td><td>Metabolic leakage and re-uptake</td></tr><tr><td>GSM</td><td><code>textbook</code> — Escherichia coli (core GSM, 95 rxns)<br><span style='font-size:12px;color:#666'>biomass reaction: <code>Biomass_Ecoli_core</code></span></td></tr><tr><td>CRM</td><td><code>micrm</code></td></tr><tr><td>Integration</td><td>360 steps × 0.05 hr = 18.0 hr simulated</td></tr><tr><td>Wall-clock time</td><td>0.12 s</td></tr><tr><td>Final biomass</td><td>0.663 gDW/L</td></tr><tr><td>Final glucose</td><td>0.016 mmol/L</td></tr><tr><td>Final acetate</td><td>0.836 mmol/L</td></tr><tr><td>Peak μ (FBA)</td><td>0.444 1/hr</td></tr><tr><td>Peak glucose CRM→FBA</td><td>u=8.00 &nbsp; · &nbsp; |v|=8.00 &nbsp; <span style='font-size:11px;color:#666'>mmol/gDW/hr</span></td></tr><tr><td>Peak acetate CRM→FBA</td><td>u=1.13 &nbsp; · &nbsp; |v|=1.10 &nbsp; <span style='font-size:11px;color:#666'>mmol/gDW/hr</span></td></tr></table>
     <h3>Configuration</h3>
     <pre class="config">model_file        = &#x27;textbook&#x27;   # Escherichia coli (core GSM, 95 rxns)
@@ -165,6 +255,22 @@ crm.type          = micrm
 crm.params        = {&#x27;c&#x27;: {&#x27;glucose&#x27;: 1.0, &#x27;acetate&#x27;: 0.3}}
 substrate_update_reactions = {&#x27;glucose&#x27;: &#x27;EX_glc__D_e&#x27;, &#x27;acetate&#x27;: &#x27;EX_ac_e&#x27;}
 bounds            = {&#x27;EX_o2_e&#x27;: {&#x27;lower&#x27;: -6.0, &#x27;upper&#x27;: 1000.0}, &#x27;ATPM&#x27;: {&#x27;lower&#x27;: 1.0, &#x27;upper&#x27;: 1.0}}</pre>
+    <h3>Composite Document</h3>
+    <div class="json-viewer" data-test="cross_feed">
+      <div class="json-toolbar">
+        <input class="json-search" placeholder="Search keys..." />
+        <button type="button" class="json-reset">Top-level</button>
+        <span class="json-status"></span>
+      </div>
+      <div class="json-layout">
+        <div class="json-nav"></div>
+        <div class="json-main">
+          <div class="json-path"></div>
+          <div class="json-value"></div>
+        </div>
+      </div>
+      <script type="application/json" id="json-data-cross_feed">{"schema": {"substrates": "map[concentration]", "biomass": "mass", "uptakes": "overwrite[map[float]]", "interval": "overwrite[float]"}, "state": {"substrates": {"glucose": 8.0, "acetate": 0.0}, "biomass": 0.01, "uptakes": {"glucose": 0.0, "acetate": 0.0}, "interval": 0.05, "crm": {"_type": "process", "address": "local:!crm_dfba.processes.crm.CRMProcess", "config": {"resources": ["glucose", "acetate"], "crm": {"type": "micrm", "params": {"c": {"glucose": 1.0, "acetate": 0.3}}}}, "interval": 0.05, "inputs": {"substrates": ["substrates"], "biomass": ["biomass"]}, "outputs": {"uptakes": ["uptakes"], "interval": ["interval"]}}, "fba": {"_type": "step", "address": "local:!crm_dfba.processes.fba.FBAStep", "config": {"model_file": "textbook", "substrate_update_reactions": {"glucose": "EX_glc__D_e", "acetate": "EX_ac_e"}, "bounds": {"EX_o2_e": {"lower": -6.0, "upper": 1000.0}, "ATPM": {"lower": 1.0, "upper": 1.0}}, "biomass_reaction": "Biomass_Ecoli_core"}, "inputs": {"uptakes": ["uptakes"], "substrates": ["substrates"], "biomass": ["biomass"], "interval": ["interval"]}, "outputs": {"substrates": ["substrates"], "biomass": ["biomass"]}}}}</script>
+    </div>
   </section>
 
   <section id="nutrient_sweep">
@@ -173,8 +279,10 @@ bounds            = {&#x27;EX_o2_e&#x27;: {&#x27;lower&#x27;: -6.0, &#x27;upper&
     <p style="margin-top:0.8rem">Sweep over initial glucose (1-80 mmol/L) with the Monod diauxie setup. Plot final biomass and apparent biomass yield per mmol glucose consumed. Biomass saturates with resource availability; apparent yield drops at high glucose as more carbon exits as acetate/CO2 overflow.</p>
     <h3>Result</h3>
     <img src="nutrient_sweep.png" alt="nutrient_sweep" />
-    <h3>Summary</h3>
-    <table><tr><td>Phenomenon</td><td>Saturating yield curve</td></tr><tr><td>GSM</td><td><code>textbook</code> — Escherichia coli (core GSM, 95 rxns)<br><span style='font-size:12px;color:#666'>biomass reaction: <code>Biomass_Ecoli_core</code></span></td></tr><tr><td>CRM</td><td><code>monod</code></td></tr><tr><td>Integration</td><td>240 steps × 0.05 hr = 12.0 hr simulated</td></tr><tr><td>Wall-clock time</td><td>1.15 s</td></tr><tr><td>Range</td><td>glucose0 ∈ [1.0, 80.0] mmol/L (7 points)</td></tr><tr><td>Biomass range</td><td>0.099 → 7.421 gDW/L</td></tr></table>
+    <h3>Composition</h3>
+<img src="nutrient_sweep_bigraph.png" alt="nutrient_sweep bigraph" class="viz-img" />
+<h3>Summary</h3>
+    <table><tr><td>Phenomenon</td><td>Saturating yield curve</td></tr><tr><td>GSM</td><td><code>textbook</code> — Escherichia coli (core GSM, 95 rxns)<br><span style='font-size:12px;color:#666'>biomass reaction: <code>Biomass_Ecoli_core</code></span></td></tr><tr><td>CRM</td><td><code>monod</code></td></tr><tr><td>Integration</td><td>240 steps × 0.05 hr = 12.0 hr simulated</td></tr><tr><td>Wall-clock time</td><td>1.24 s</td></tr><tr><td>Range</td><td>glucose0 ∈ [1.0, 80.0] mmol/L (7 points)</td></tr><tr><td>Biomass range</td><td>0.099 → 7.421 gDW/L</td></tr></table>
     <h3>Configuration</h3>
     <pre class="config">model_file        = &#x27;textbook&#x27;   # Escherichia coli (core GSM, 95 rxns)
 biomass_reaction  = &#x27;Biomass_Ecoli_core&#x27;
@@ -182,6 +290,22 @@ crm.type          = monod
 crm.params        = {&#x27;kinetic_params&#x27;: {&#x27;glucose&#x27;: (0.5, 10.0), &#x27;acetate&#x27;: (0.5, 3.0)}}
 substrate_update_reactions = {&#x27;glucose&#x27;: &#x27;EX_glc__D_e&#x27;, &#x27;acetate&#x27;: &#x27;EX_ac_e&#x27;}
 bounds            = {&#x27;EX_o2_e&#x27;: {&#x27;lower&#x27;: -20.0, &#x27;upper&#x27;: 1000.0}, &#x27;ATPM&#x27;: {&#x27;lower&#x27;: 1.0, &#x27;upper&#x27;: 1.0}}</pre>
+    <h3>Composite Document</h3>
+    <div class="json-viewer" data-test="nutrient_sweep">
+      <div class="json-toolbar">
+        <input class="json-search" placeholder="Search keys..." />
+        <button type="button" class="json-reset">Top-level</button>
+        <span class="json-status"></span>
+      </div>
+      <div class="json-layout">
+        <div class="json-nav"></div>
+        <div class="json-main">
+          <div class="json-path"></div>
+          <div class="json-value"></div>
+        </div>
+      </div>
+      <script type="application/json" id="json-data-nutrient_sweep">{"schema": {"substrates": "map[concentration]", "biomass": "mass", "uptakes": "overwrite[map[float]]", "interval": "overwrite[float]"}, "state": {"substrates": {"glucose": 0.0, "acetate": 0.0}, "biomass": 0.01, "uptakes": {"glucose": 0.0, "acetate": 0.0}, "interval": 0.05, "crm": {"_type": "process", "address": "local:!crm_dfba.processes.crm.CRMProcess", "config": {"resources": ["glucose", "acetate"], "crm": {"type": "monod", "params": {"kinetic_params": {"glucose": [0.5, 10.0], "acetate": [0.5, 3.0]}}}}, "interval": 0.05, "inputs": {"substrates": ["substrates"], "biomass": ["biomass"]}, "outputs": {"uptakes": ["uptakes"], "interval": ["interval"]}}, "fba": {"_type": "step", "address": "local:!crm_dfba.processes.fba.FBAStep", "config": {"model_file": "textbook", "substrate_update_reactions": {"glucose": "EX_glc__D_e", "acetate": "EX_ac_e"}, "bounds": {"EX_o2_e": {"lower": -20.0, "upper": 1000.0}, "ATPM": {"lower": 1.0, "upper": 1.0}}, "biomass_reaction": "Biomass_Ecoli_core"}, "inputs": {"uptakes": ["uptakes"], "substrates": ["substrates"], "biomass": ["biomass"], "interval": ["interval"]}, "outputs": {"substrates": ["substrates"], "biomass": ["biomass"]}}}}</script>
+    </div>
   </section>
 
   <section id="community">
@@ -190,7 +314,9 @@ bounds            = {&#x27;EX_o2_e&#x27;: {&#x27;lower&#x27;: -20.0, &#x27;upper
     <p style="margin-top:0.8rem">Two E. coli core GSMs share a single glucose+acetate pool with no spatial separation. Species &#x27;glucose_specialist&#x27; has a strong Monod preference for glucose (high Vmax_glc, low Vmax_ac) and a tight O2 cap that forces acetate overflow. Species &#x27;acetate_specialist&#x27; has low glucose affinity and high acetate Vmax. Early on the glucose specialist dominates, secreting acetate; the acetate specialist then grows on the acetate byproduct — niche partitioning by cross-feeding, visible as two offset growth phases on the same GSM.</p>
     <h3>Result</h3>
     <img src="community.png" alt="community" />
-    <h3>Summary</h3>
+    <h3>Composition</h3>
+<img src="community_bigraph.png" alt="community bigraph" class="viz-img" />
+<h3>Summary</h3>
     <table><tr><td>Phenomenon</td><td>Niche differentiation and cross-feeding</td></tr><tr><td>GSM (glucose_specialist)</td><td><code>textbook</code> — Escherichia coli (core GSM, 95 rxns)<br><span style='font-size:12px;color:#666'>biomass reaction: <code>Biomass_Ecoli_core</code></span></td></tr><tr><td>GSM (acetate_specialist)</td><td><code>textbook</code> — Escherichia coli (core GSM, 95 rxns)<br><span style='font-size:12px;color:#666'>biomass reaction: <code>Biomass_Ecoli_core</code></span></td></tr><tr><td>CRM</td><td><code>monod</code></td></tr><tr><td>Integration</td><td>360 steps × 0.05 hr = 18.0 hr simulated</td></tr><tr><td>Wall-clock time</td><td>0.24 s</td></tr><tr><td>Final biomass (glucose_specialist)</td><td>0.850 gDW/L &nbsp; · &nbsp; peak μ = 0.563 1/hr</td></tr><tr><td>Final biomass (acetate_specialist)</td><td>0.032 gDW/L &nbsp; · &nbsp; peak μ = 0.221 1/hr</td></tr><tr><td>Final glucose (shared pool)</td><td>0.000 mmol/L</td></tr><tr><td>Final acetate (shared pool)</td><td>9.620 mmol/L</td></tr></table>
     <h3>Configuration</h3>
     <pre class="config"># glucose_specialist
@@ -208,6 +334,22 @@ crm.type          = monod
 crm.params        = {&#x27;kinetic_params&#x27;: {&#x27;glucose&#x27;: (5.0, 1.5), &#x27;acetate&#x27;: (0.2, 6.0)}}
 substrate_update_reactions = {&#x27;glucose&#x27;: &#x27;EX_glc__D_e&#x27;, &#x27;acetate&#x27;: &#x27;EX_ac_e&#x27;}
 bounds            = {&#x27;EX_o2_e&#x27;: {&#x27;lower&#x27;: -20.0, &#x27;upper&#x27;: 1000.0}, &#x27;ATPM&#x27;: {&#x27;lower&#x27;: 1.0, &#x27;upper&#x27;: 1.0}}</pre>
+    <h3>Composite Document</h3>
+    <div class="json-viewer" data-test="community">
+      <div class="json-toolbar">
+        <input class="json-search" placeholder="Search keys..." />
+        <button type="button" class="json-reset">Top-level</button>
+        <span class="json-status"></span>
+      </div>
+      <div class="json-layout">
+        <div class="json-nav"></div>
+        <div class="json-main">
+          <div class="json-path"></div>
+          <div class="json-value"></div>
+        </div>
+      </div>
+      <script type="application/json" id="json-data-community">{"schema": {"substrates": "map[concentration]", "biomass_glucose_specialist": "mass", "uptakes_glucose_specialist": "overwrite[map[float]]", "interval_glucose_specialist": "overwrite[float]", "biomass_acetate_specialist": "mass", "uptakes_acetate_specialist": "overwrite[map[float]]", "interval_acetate_specialist": "overwrite[float]"}, "state": {"substrates": {"glucose": 15.0, "acetate": 0.0}, "biomass_glucose_specialist": 0.008, "uptakes_glucose_specialist": {"glucose": 0.0, "acetate": 0.0}, "interval_glucose_specialist": 0.05, "crm_glucose_specialist": {"_type": "process", "address": "local:!crm_dfba.processes.crm.CRMProcess", "config": {"resources": ["glucose", "acetate"], "crm": {"type": "monod", "params": {"kinetic_params": {"glucose": [0.3, 12.0], "acetate": [2.0, 1.0]}}}}, "interval": 0.05, "inputs": {"substrates": ["substrates"], "biomass": ["biomass_glucose_specialist"]}, "outputs": {"uptakes": ["uptakes_glucose_specialist"], "interval": ["interval_glucose_specialist"]}}, "fba_glucose_specialist": {"_type": "step", "address": "local:!crm_dfba.processes.fba.FBAStep", "config": {"model_file": "textbook", "substrate_update_reactions": {"glucose": "EX_glc__D_e", "acetate": "EX_ac_e"}, "bounds": {"EX_o2_e": {"lower": -6.0, "upper": 1000.0}, "ATPM": {"lower": 1.0, "upper": 1.0}}, "biomass_reaction": "Biomass_Ecoli_core"}, "inputs": {"uptakes": ["uptakes_glucose_specialist"], "substrates": ["substrates"], "biomass": ["biomass_glucose_specialist"], "interval": ["interval_glucose_specialist"]}, "outputs": {"substrates": ["substrates"], "biomass": ["biomass_glucose_specialist"]}}, "biomass_acetate_specialist": 0.002, "uptakes_acetate_specialist": {"glucose": 0.0, "acetate": 0.0}, "interval_acetate_specialist": 0.05, "crm_acetate_specialist": {"_type": "process", "address": "local:!crm_dfba.processes.crm.CRMProcess", "config": {"resources": ["glucose", "acetate"], "crm": {"type": "monod", "params": {"kinetic_params": {"glucose": [5.0, 1.5], "acetate": [0.2, 6.0]}}}}, "interval": 0.05, "inputs": {"substrates": ["substrates"], "biomass": ["biomass_acetate_specialist"]}, "outputs": {"uptakes": ["uptakes_acetate_specialist"], "interval": ["interval_acetate_specialist"]}}, "fba_acetate_specialist": {"_type": "step", "address": "local:!crm_dfba.processes.fba.FBAStep", "config": {"model_file": "textbook", "substrate_update_reactions": {"glucose": "EX_glc__D_e", "acetate": "EX_ac_e"}, "bounds": {"EX_o2_e": {"lower": -20.0, "upper": 1000.0}, "ATPM": {"lower": 1.0, "upper": 1.0}}, "biomass_reaction": "Biomass_Ecoli_core"}, "inputs": {"uptakes": ["uptakes_acetate_specialist"], "substrates": ["substrates"], "biomass": ["biomass_acetate_specialist"], "interval": ["interval_acetate_specialist"]}, "outputs": {"substrates": ["substrates"], "biomass": ["biomass_acetate_specialist"]}}}}</script>
+    </div>
   </section>
 
 
@@ -225,8 +367,8 @@ bounds            = {&#x27;EX_o2_e&#x27;: {&#x27;lower&#x27;: -20.0, &#x27;upper
           <th>Wall-clock</th>
         </tr>
       </thead>
-      <tbody><tr><td><a href='#diauxie'>Diauxie</a></td><td>Sequential substrate utilization</td><td><code>monod</code></td><td><code>textbook</code></td><td>18.0 h</td><td>0.21 s</td></tr><tr><td><a href='#overflow'>Overflow</a></td><td>Crabtree-like acetate secretion</td><td><code>macarthur</code></td><td><code>textbook</code></td><td>15.0 h</td><td>0.11 s</td></tr><tr><td><a href='#adaptive'>Adaptive</a></td><td>Dynamic trait reallocation</td><td><code>adaptive</code></td><td><code>textbook</code></td><td>24.0 h</td><td>0.36 s</td></tr><tr><td><a href='#tilman'>Tilman</a></td><td>R-independent uptake</td><td><code>macarthur</code></td><td><code>textbook</code></td><td>15.0 h</td><td>0.10 s</td></tr><tr><td><a href='#cross_feed'>Cross Feed</a></td><td>Metabolic leakage and re-uptake</td><td><code>micrm</code></td><td><code>textbook</code></td><td>18.0 h</td><td>0.12 s</td></tr><tr><td><a href='#nutrient_sweep'>Nutrient Sweep</a></td><td>Saturating yield curve</td><td><code>monod</code></td><td><code>textbook</code></td><td>12.0 h</td><td>1.15 s</td></tr><tr><td><a href='#community'>Community</a></td><td>Niche differentiation and cross-feeding</td><td><code>monod</code></td><td><code>textbook, textbook</code></td><td>18.0 h</td><td>0.24 s</td></tr></tbody>
-      <tfoot><tr><td colspan='5' style='text-align:right;font-weight:600'>Total wall-clock</td><td style='font-weight:600'>2.28 s</td></tr></tfoot>
+      <tbody><tr><td><a href='#diauxie'>Diauxie</a></td><td>Sequential substrate utilization</td><td><code>monod</code></td><td><code>textbook</code></td><td>18.0 h</td><td>0.21 s</td></tr><tr><td><a href='#overflow'>Overflow</a></td><td>Crabtree-like acetate secretion</td><td><code>macarthur</code></td><td><code>textbook</code></td><td>15.0 h</td><td>0.10 s</td></tr><tr><td><a href='#adaptive'>Adaptive</a></td><td>Dynamic trait reallocation</td><td><code>adaptive</code></td><td><code>textbook</code></td><td>24.0 h</td><td>0.37 s</td></tr><tr><td><a href='#tilman'>Tilman</a></td><td>R-independent uptake</td><td><code>macarthur</code></td><td><code>textbook</code></td><td>15.0 h</td><td>0.10 s</td></tr><tr><td><a href='#cross_feed'>Cross Feed</a></td><td>Metabolic leakage and re-uptake</td><td><code>micrm</code></td><td><code>textbook</code></td><td>18.0 h</td><td>0.12 s</td></tr><tr><td><a href='#nutrient_sweep'>Nutrient Sweep</a></td><td>Saturating yield curve</td><td><code>monod</code></td><td><code>textbook</code></td><td>12.0 h</td><td>1.24 s</td></tr><tr><td><a href='#community'>Community</a></td><td>Niche differentiation and cross-feeding</td><td><code>monod</code></td><td><code>textbook, textbook</code></td><td>18.0 h</td><td>0.24 s</td></tr></tbody>
+      <tfoot><tr><td colspan='5' style='text-align:right;font-weight:600'>Total wall-clock</td><td style='font-weight:600'>2.38 s</td></tr></tfoot>
     </table>
   </section>
 
@@ -242,7 +384,7 @@ bounds            = {&#x27;EX_o2_e&#x27;: {&#x27;lower&#x27;: -20.0, &#x27;upper
     <h3>Re-run locally</h3>
 <pre class="config">git clone https://github.com/vivarium-collective/CRM-FBA
 cd CRM-FBA
-git checkout 7f026147
+git checkout 936698b1
 pip install -e .
 python -m crm_dfba.experiments.test_suite</pre>
 
@@ -261,6 +403,80 @@ python -m crm_dfba.experiments.test_suite --no-open</pre>
     <code>extra_meta['species']</code>.</p>
   </section>
 
+
+
+<script>
+(function(){
+  function isObj(x){ return x && typeof x === "object" && !Array.isArray(x); }
+  function getAt(root, path){
+    let c = root;
+    for (const p of path){ if (c==null) return undefined; c = Array.isArray(c) ? c[Number(p)] : c[p]; }
+    return c;
+  }
+  function renderVal(el, v){
+    el.innerHTML = "";
+    const pre = document.createElement("pre");
+    if (v === null || typeof v !== "object"){ pre.textContent = JSON.stringify(v, null, 2); }
+    else if (Array.isArray(v)){
+      el.innerHTML = `<span class="json-pill">array [${v.length}]</span>`;
+      pre.textContent = JSON.stringify(v, null, 2);
+    } else {
+      const keys = Object.keys(v);
+      el.innerHTML = `<span class="json-pill">object {${keys.length} keys}</span>`;
+      pre.textContent = JSON.stringify(v, null, 2);
+    }
+    el.appendChild(pre);
+  }
+  document.querySelectorAll(".json-viewer").forEach(viewer => {
+    const testId = viewer.dataset.test;
+    const dataEl = document.getElementById("json-data-" + testId);
+    if (!dataEl) return;
+    const root = JSON.parse(dataEl.textContent);
+    const nav = viewer.querySelector(".json-nav");
+    const pathEl = viewer.querySelector(".json-path");
+    const valEl = viewer.querySelector(".json-value");
+    const search = viewer.querySelector(".json-search");
+    const resetBtn = viewer.querySelector(".json-reset");
+    const status = viewer.querySelector(".json-status");
+
+    function showKeys(obj, basePath){
+      nav.innerHTML = "";
+      const keys = Object.keys(obj);
+      status.textContent = keys.length + " keys";
+      keys.forEach(k => {
+        const item = document.createElement("div");
+        item.className = "json-item";
+        const v = obj[k];
+        const hint = v === null ? "null" : Array.isArray(v) ? `[${v.length}]` : typeof v === "object" ? "{...}" : JSON.stringify(v).slice(0,30);
+        item.textContent = k + "  " + hint;
+        item.onclick = () => {
+          nav.querySelectorAll(".json-item").forEach(x => x.classList.remove("active"));
+          item.classList.add("active");
+          const path = basePath.concat([k]);
+          pathEl.textContent = path.join(".");
+          const val = getAt(root, path);
+          if (isObj(val) && Object.keys(val).length > 0){
+            showKeys(val, path);
+          } else {
+            renderVal(valEl, val);
+          }
+        };
+        nav.appendChild(item);
+      });
+    }
+    function reset(){ pathEl.textContent = ""; valEl.innerHTML = ""; showKeys(root, []); }
+    resetBtn.onclick = reset;
+    search.oninput = () => {
+      const q = search.value.toLowerCase().trim();
+      if (!q){ reset(); return; }
+      nav.querySelectorAll(".json-item").forEach(el => {
+        el.style.display = el.textContent.toLowerCase().includes(q) ? "" : "none";
+      });
+    };
+    reset();
+  });
+})();
+</script>
 
 </body>
 </html>
