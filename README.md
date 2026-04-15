@@ -2,7 +2,7 @@
 
 ### **[→ Experiment report](https://vivarium-collective.github.io/CRM-FBA/)**
 
-[![community experiment preview](doc/community.png)](https://vivarium-collective.github.io/CRM-FBA/)
+[![community experiment preview](docs/community.png)](https://vivarium-collective.github.io/CRM-FBA/)
 
 A process-bigraph process that runs dynamic Flux Balance Analysis (dFBA)
 with exchange bounds derived from a configurable **Consumer Resource
@@ -81,10 +81,10 @@ python -m crm_dfba.demo
 ## Experiment suite
 
 Run the full CRM-FBA experiment suite and generate the HTML report at
-`doc/index.html`:
+`docs/index.html`:
 
 ```bash
-# runs all experiments, saves plots to doc/, opens the report in a browser
+# runs all experiments, saves plots to docs/, opens the report in a browser
 python -m crm_dfba.experiments.test_suite
 
 # headless

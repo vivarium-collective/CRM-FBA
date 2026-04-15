@@ -1,0 +1,266 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>CRM-FBA experiments</title>
+<style>
+  body { font-family: system-ui, sans-serif; max-width: 960px; margin: 2rem auto;
+         background: #fafafa; color: #222; padding: 0 1rem; }
+  h1 { border-bottom: 2px solid #333; padding-bottom: .3rem; }
+  h3 { margin-top: 1.2rem; margin-bottom: 0.4rem; font-size: 14px; text-transform: uppercase;
+       letter-spacing: 0.03em; color: #555; }
+  section { background: #fff; border: 1px solid #ddd; border-radius: 8px;
+            padding: 1.5rem; margin: 1.5rem 0; scroll-margin-top: 4.5rem; }
+  h2 { margin-top: 0; }
+  p  { line-height: 1.5; }
+  table { border-collapse: collapse; margin: .6rem 0; width: 100%; font-size: 13px; }
+  td { padding: .3rem .8rem; border: 1px solid #eee; vertical-align: top; }
+  td:first-child { font-weight: 600; width: 200px; background: #fcfcfc; }
+  img { max-width: 100%; margin-top: .5rem; border: 1px solid #ddd; border-radius: 4px; }
+  code { background: #f0f0f0; padding: 1px 6px; border-radius: 4px; font-size: 12px; }
+  pre.config { background: #f6f8fa; border: 1px solid #e4e4e4; border-radius: 6px;
+               padding: 10px 12px; margin: 0; font-family: ui-monospace, monospace;
+               font-size: 12px; overflow-x: auto; }
+  .meta { background: #fff; border: 1px solid #ddd; border-radius: 8px;
+          padding: 0.8rem 1.2rem; margin: 1rem 0; font-size: 13px; color: #555; }
+  .meta div { display: inline-block; margin-right: 1.5rem; }
+  .meta a { color: #0366d6; text-decoration: none; }
+  .experiment-nav { position: sticky; top: 0; z-index: 10; background: #fff;
+                    border: 1px solid #ddd; border-radius: 8px;
+                    padding: 0.6rem 1rem; margin: 1rem 0;
+                    display: flex; flex-wrap: wrap; gap: 0.5rem; align-items: center;
+                    box-shadow: 0 2px 4px rgba(0,0,0,0.04); }
+  .experiment-nav .nav-title { font-weight: 600; margin-right: 0.4rem; color: #555; }
+  .experiment-nav a { padding: 3px 10px; border: 1px solid #ddd; border-radius: 999px;
+                      background: #fafafa; color: #0366d6; text-decoration: none; font-size: 13px; }
+  .experiment-nav a:hover { background: #eef3fa; border-color: #b8c7dc; }
+  .phenomenon { color: #666; font-size: 13px; margin-top: -0.4rem;
+                display: inline-block; padding: 2px 8px; background: #eef3fa;
+                border-radius: 4px; }
+  .summary-section th { background: #f8f8f8; text-align: left; padding: 0.3rem 0.6rem;
+                        border: 1px solid #eee; font-size: 12px; }
+  .summary-section td { font-size: 12px; }
+  .reproduce h3 { text-transform: none; letter-spacing: 0; font-size: 14px; color: #333; }
+  .intro-card { background: #eef6ff; border: 1px solid #c6dcef; border-radius: 8px;
+                padding: 1rem 1.25rem; margin: 1rem 0; font-size: 13px; }
+  .intro-card strong { color: #0b4c8a; }
+</style>
+</head>
+<body>
+<h1>CRM-FBA experiments</h1>
+
+<div class="intro-card">
+<strong>CRM-coupled dynamic FBA.</strong> Each experiment in this suite
+runs a genome-scale metabolic model (GSM) under Flux Balance Analysis,
+with exchange-reaction lower bounds set by a Consumer Resource Model
+(CRM) from a pluggable registry (MacArthur, Adaptive, MCRM, MiCRM,
+Monod). The figures separate the two layers explicitly — panel <b>(B)</b>
+shows the <em>CRM-prescribed</em> uptake rate <code>u_a(t)</code>
+(the input to <code>EX_rxn.lower_bound = −u_a</code>), panel <b>(C)</b>
+shows the <em>FBA-realized</em> exchange flux <code>v_a(t)</code> next to
+the CRM envelope so the coupling is visible at a glance.
+</div>
+
+<div class="meta">
+  <div><strong>Generated:</strong> 2026-04-15 14:05:36 UTC</div>
+  <div><strong>On:</strong> LT-0919936</div>
+  <div><strong>Commit:</strong> <a href="https://github.com/vivarium-collective/CRM-FBA/commit/518f9265ab3db68f62e83f7c1e116c913b0d04a2"><code>518f9265</code></a></div>
+  <div><strong>Source:</strong> <a href="https://github.com/vivarium-collective/CRM-FBA">vivarium-collective/CRM-FBA</a></div>
+</div>
+
+<nav class="experiment-nav">
+  <span class="nav-title">Jump to:</span>
+  <a href="#diauxie">Diauxie</a>
+  <a href="#overflow">Overflow</a>
+  <a href="#adaptive">Adaptive</a>
+  <a href="#tilman">Tilman</a>
+  <a href="#cross_feed">Cross Feed</a>
+  <a href="#nutrient_sweep">Nutrient Sweep</a>
+  <a href="#community">Community</a>
+  <a href="#summary">Summary</a>
+  <a href="#reproduce">Reproduce</a>
+</nav>
+
+
+  <section id="diauxie">
+    <h2>Diauxie</h2>
+    <div class="phenomenon">Sequential substrate utilization · CRM: <code>monod</code></div>
+    <p style="margin-top:0.8rem">Classical Monod CRM coupled to the E. coli core GSM. With high initial glucose, FBA preferentially oxidizes glucose and secretes some acetate. Once glucose is depleted, the Monod uptake rate on acetate becomes non-negligible and FBA switches to acetate consumption — the canonical diauxic shift.</p>
+    <h3>Result</h3>
+    <img src="diauxie.png" alt="diauxie" />
+    <h3>Summary</h3>
+    <table><tr><td>Phenomenon</td><td>Sequential substrate utilization</td></tr><tr><td>GSM</td><td><code>textbook</code> — Escherichia coli (core GSM, 95 rxns)<br><span style='font-size:12px;color:#666'>biomass reaction: <code>Biomass_Ecoli_core</code></span></td></tr><tr><td>CRM</td><td><code>monod</code></td></tr><tr><td>Integration</td><td>360 steps × 0.05 hr = 18.0 hr simulated</td></tr><tr><td>Wall-clock time</td><td>0.22 s</td></tr><tr><td>Final biomass</td><td>1.377 gDW/L</td></tr><tr><td>Final glucose</td><td>0.000 mmol/L</td></tr><tr><td>Final acetate</td><td>0.000 mmol/L</td></tr><tr><td>Peak μ (FBA)</td><td>0.882 1/hr</td></tr><tr><td>Peak glucose CRM→FBA</td><td>u=9.68 &nbsp; · &nbsp; |v|=9.68 &nbsp; <span style='font-size:11px;color:#666'>mmol/gDW/hr</span></td></tr></table>
+    <h3>Configuration</h3>
+    <pre class="config">model_file        = &#x27;textbook&#x27;   # Escherichia coli (core GSM, 95 rxns)
+biomass_reaction  = &#x27;Biomass_Ecoli_core&#x27;
+crm.type          = monod
+crm.params        = {&#x27;kinetic_params&#x27;: {&#x27;glucose&#x27;: (0.5, 10.0), &#x27;acetate&#x27;: (0.5, 3.0)}}
+substrate_update_reactions = {&#x27;glucose&#x27;: &#x27;EX_glc__D_e&#x27;, &#x27;acetate&#x27;: &#x27;EX_ac_e&#x27;}
+bounds            = {&#x27;EX_o2_e&#x27;: {&#x27;lower&#x27;: -20.0, &#x27;upper&#x27;: 1000.0}, &#x27;ATPM&#x27;: {&#x27;lower&#x27;: 1.0, &#x27;upper&#x27;: 1.0}}</pre>
+  </section>
+
+  <section id="overflow">
+    <h2>Overflow</h2>
+    <div class="phenomenon">Crabtree-like acetate secretion · CRM: <code>macarthur</code></div>
+    <p style="margin-top:0.8rem">MacArthur external-resource CRM drives glucose uptake while the oxygen exchange is tightly capped (EX_o2_e lower = -5). Under O2 limitation the LP cannot fully oxidize the influx and secretes acetate as overflow — a Crabtree-like phenotype — even though no acetate was initially present.</p>
+    <h3>Result</h3>
+    <img src="overflow.png" alt="overflow" />
+    <h3>Summary</h3>
+    <table><tr><td>Phenomenon</td><td>Crabtree-like acetate secretion</td></tr><tr><td>GSM</td><td><code>textbook</code> — Escherichia coli (core GSM, 95 rxns)<br><span style='font-size:12px;color:#666'>biomass reaction: <code>Biomass_Ecoli_core</code></span></td></tr><tr><td>CRM</td><td><code>macarthur</code></td></tr><tr><td>Integration</td><td>300 steps × 0.05 hr = 15.0 hr simulated</td></tr><tr><td>Wall-clock time</td><td>0.11 s</td></tr><tr><td>Final biomass</td><td>0.908 gDW/L</td></tr><tr><td>Final glucose</td><td>0.003 mmol/L</td></tr><tr><td>Final acetate</td><td>1.562 mmol/L</td></tr><tr><td>Peak μ (FBA)</td><td>0.608 1/hr</td></tr><tr><td>Peak glucose CRM→FBA</td><td>u=14.40 &nbsp; · &nbsp; |v|=14.40 &nbsp; <span style='font-size:11px;color:#666'>mmol/gDW/hr</span></td></tr><tr><td>Peak acetate CRM→FBA</td><td>u=4.14 &nbsp; · &nbsp; |v|=3.35 &nbsp; <span style='font-size:11px;color:#666'>mmol/gDW/hr</span></td></tr></table>
+    <h3>Configuration</h3>
+    <pre class="config">model_file        = &#x27;textbook&#x27;   # Escherichia coli (core GSM, 95 rxns)
+biomass_reaction  = &#x27;Biomass_Ecoli_core&#x27;
+crm.type          = macarthur
+crm.params        = {&#x27;c&#x27;: {&#x27;glucose&#x27;: 1.2, &#x27;acetate&#x27;: 0.4}, &#x27;resource_mode&#x27;: &#x27;external&#x27;}
+substrate_update_reactions = {&#x27;glucose&#x27;: &#x27;EX_glc__D_e&#x27;, &#x27;acetate&#x27;: &#x27;EX_ac_e&#x27;}
+bounds            = {&#x27;EX_o2_e&#x27;: {&#x27;lower&#x27;: -5.0, &#x27;upper&#x27;: 1000.0}, &#x27;ATPM&#x27;: {&#x27;lower&#x27;: 1.0, &#x27;upper&#x27;: 1.0}}</pre>
+  </section>
+
+  <section id="adaptive">
+    <h2>Adaptive</h2>
+    <div class="phenomenon">Dynamic trait reallocation · CRM: <code>adaptive</code></div>
+    <p style="margin-top:0.8rem">Adaptive CRM with an internal allocation vector A_a per resource, constrained by an energy budget E_star. Initial allocation is skewed to glucose (A0=[0.95, 0.05]) and the oxygen exchange is capped so FBA secretes acetate as overflow while glucose is abundant. Once glucose depletes, r_glucose → 0 so the gradient on A_glucose vanishes while A_acetate keeps climbing under the Picciani-Mori rule — the allocation vector reallocates toward acetate and growth continues on the acetate pool that the cell itself produced.</p>
+    <h3>Result</h3>
+    <img src="adaptive.png" alt="adaptive" />
+    <h3>Summary</h3>
+    <table><tr><td>Phenomenon</td><td>Dynamic trait reallocation</td></tr><tr><td>GSM</td><td><code>textbook</code> — Escherichia coli (core GSM, 95 rxns)<br><span style='font-size:12px;color:#666'>biomass reaction: <code>Biomass_Ecoli_core</code></span></td></tr><tr><td>CRM</td><td><code>adaptive</code></td></tr><tr><td>Integration</td><td>480 steps × 0.05 hr = 24.0 hr simulated</td></tr><tr><td>Wall-clock time</td><td>0.38 s</td></tr><tr><td>Final biomass</td><td>0.784 gDW/L</td></tr><tr><td>Final glucose</td><td>0.000 mmol/L</td></tr><tr><td>Final acetate</td><td>0.019 mmol/L</td></tr><tr><td>Peak μ (FBA)</td><td>0.493 1/hr</td></tr><tr><td>Peak glucose CRM→FBA</td><td>u=9.51 &nbsp; · &nbsp; |v|=9.51 &nbsp; <span style='font-size:11px;color:#666'>mmol/gDW/hr</span></td></tr><tr><td>Peak acetate CRM→FBA</td><td>u=4.61 &nbsp; · &nbsp; |v|=4.61 &nbsp; <span style='font-size:11px;color:#666'>mmol/gDW/hr</span></td></tr></table>
+    <h3>Configuration</h3>
+    <pre class="config">model_file        = &#x27;textbook&#x27;   # Escherichia coli (core GSM, 95 rxns)
+biomass_reaction  = &#x27;Biomass_Ecoli_core&#x27;
+crm.type          = adaptive
+crm.params        = {&#x27;v&#x27;: {&#x27;glucose&#x27;: 10.0, &#x27;acetate&#x27;: 5.0}, &#x27;K&#x27;: {&#x27;glucose&#x27;: 0.5, &#x27;acetate&#x27;: 0.5}, &#x27;lam&#x27;: 0.6, &#x27;E_star&#x27;: 1.0, &#x27;A0&#x27;: {&#x27;glucose&#x27;: 0.9, &#x27;acetate&#x27;: 0.1}, &#x27;n_substeps&#x27;: 50}
+substrate_update_reactions = {&#x27;glucose&#x27;: &#x27;EX_glc__D_e&#x27;, &#x27;acetate&#x27;: &#x27;EX_ac_e&#x27;}
+bounds            = {&#x27;EX_o2_e&#x27;: {&#x27;lower&#x27;: -6.0, &#x27;upper&#x27;: 1000.0}, &#x27;ATPM&#x27;: {&#x27;lower&#x27;: 1.0, &#x27;upper&#x27;: 1.0}}</pre>
+  </section>
+
+  <section id="tilman">
+    <h2>Tilman</h2>
+    <div class="phenomenon">R-independent uptake · CRM: <code>macarthur</code></div>
+    <p style="margin-top:0.8rem">MacArthur CRM in &#x27;tilman&#x27; mode: uptake rate u_a = c_a is independent of R_a. FBA drives glucose hard and at a constant rate until the extracellular concentration is exhausted, giving a sharply-cornered depletion profile characteristic of Tilman-style resource competition.</p>
+    <h3>Result</h3>
+    <img src="tilman.png" alt="tilman" />
+    <h3>Summary</h3>
+    <table><tr><td>Phenomenon</td><td>R-independent uptake</td></tr><tr><td>GSM</td><td><code>textbook</code> — Escherichia coli (core GSM, 95 rxns)<br><span style='font-size:12px;color:#666'>biomass reaction: <code>Biomass_Ecoli_core</code></span></td></tr><tr><td>CRM</td><td><code>macarthur</code></td></tr><tr><td>Integration</td><td>300 steps × 0.05 hr = 15.0 hr simulated</td></tr><tr><td>Wall-clock time</td><td>0.10 s</td></tr><tr><td>Final biomass</td><td>1185.977 gDW/L</td></tr><tr><td>Final glucose</td><td>0.000 mmol/L</td></tr><tr><td>Final acetate</td><td>0.000 mmol/L</td></tr><tr><td>Peak μ (FBA)</td><td>0.797 1/hr</td></tr><tr><td>Peak glucose CRM→FBA</td><td>u=8.00 &nbsp; · &nbsp; |v|=8.00 &nbsp; <span style='font-size:11px;color:#666'>mmol/gDW/hr</span></td></tr><tr><td>Peak acetate CRM→FBA</td><td>u=3.00 &nbsp; · &nbsp; |v|=0.00 &nbsp; <span style='font-size:11px;color:#666'>mmol/gDW/hr</span></td></tr></table>
+    <h3>Configuration</h3>
+    <pre class="config">model_file        = &#x27;textbook&#x27;   # Escherichia coli (core GSM, 95 rxns)
+biomass_reaction  = &#x27;Biomass_Ecoli_core&#x27;
+crm.type          = macarthur
+crm.params        = {&#x27;c&#x27;: {&#x27;glucose&#x27;: 8.0, &#x27;acetate&#x27;: 3.0}, &#x27;resource_mode&#x27;: &#x27;tilman&#x27;}
+substrate_update_reactions = {&#x27;glucose&#x27;: &#x27;EX_glc__D_e&#x27;, &#x27;acetate&#x27;: &#x27;EX_ac_e&#x27;}
+bounds            = {&#x27;EX_o2_e&#x27;: {&#x27;lower&#x27;: -20.0, &#x27;upper&#x27;: 1000.0}, &#x27;ATPM&#x27;: {&#x27;lower&#x27;: 1.0, &#x27;upper&#x27;: 1.0}}</pre>
+  </section>
+
+  <section id="cross_feed">
+    <h2>Cross Feed</h2>
+    <div class="phenomenon">Metabolic leakage and re-uptake · CRM: <code>micrm</code></div>
+    <p style="margin-top:0.8rem">MiCRM-style mass-action uptake of glucose and acetate on a single organism. FBA secretes acetate as a byproduct while glucose is abundant (positive extracellular acetate trajectory); once glucose drops, the accumulated acetate pool supports a second growth phase — a single-species analogue of community cross-feeding.</p>
+    <h3>Result</h3>
+    <img src="cross_feed.png" alt="cross_feed" />
+    <h3>Summary</h3>
+    <table><tr><td>Phenomenon</td><td>Metabolic leakage and re-uptake</td></tr><tr><td>GSM</td><td><code>textbook</code> — Escherichia coli (core GSM, 95 rxns)<br><span style='font-size:12px;color:#666'>biomass reaction: <code>Biomass_Ecoli_core</code></span></td></tr><tr><td>CRM</td><td><code>micrm</code></td></tr><tr><td>Integration</td><td>360 steps × 0.05 hr = 18.0 hr simulated</td></tr><tr><td>Wall-clock time</td><td>0.13 s</td></tr><tr><td>Final biomass</td><td>0.663 gDW/L</td></tr><tr><td>Final glucose</td><td>0.016 mmol/L</td></tr><tr><td>Final acetate</td><td>0.836 mmol/L</td></tr><tr><td>Peak μ (FBA)</td><td>0.444 1/hr</td></tr><tr><td>Peak glucose CRM→FBA</td><td>u=8.00 &nbsp; · &nbsp; |v|=8.00 &nbsp; <span style='font-size:11px;color:#666'>mmol/gDW/hr</span></td></tr><tr><td>Peak acetate CRM→FBA</td><td>u=1.13 &nbsp; · &nbsp; |v|=1.10 &nbsp; <span style='font-size:11px;color:#666'>mmol/gDW/hr</span></td></tr></table>
+    <h3>Configuration</h3>
+    <pre class="config">model_file        = &#x27;textbook&#x27;   # Escherichia coli (core GSM, 95 rxns)
+biomass_reaction  = &#x27;Biomass_Ecoli_core&#x27;
+crm.type          = micrm
+crm.params        = {&#x27;c&#x27;: {&#x27;glucose&#x27;: 1.0, &#x27;acetate&#x27;: 0.3}}
+substrate_update_reactions = {&#x27;glucose&#x27;: &#x27;EX_glc__D_e&#x27;, &#x27;acetate&#x27;: &#x27;EX_ac_e&#x27;}
+bounds            = {&#x27;EX_o2_e&#x27;: {&#x27;lower&#x27;: -6.0, &#x27;upper&#x27;: 1000.0}, &#x27;ATPM&#x27;: {&#x27;lower&#x27;: 1.0, &#x27;upper&#x27;: 1.0}}</pre>
+  </section>
+
+  <section id="nutrient_sweep">
+    <h2>Nutrient Sweep</h2>
+    <div class="phenomenon">Saturating yield curve · CRM: <code>monod</code></div>
+    <p style="margin-top:0.8rem">Sweep over initial glucose (1-80 mmol/L) with the Monod diauxie setup. Plot final biomass and apparent biomass yield per mmol glucose consumed. Biomass saturates with resource availability; apparent yield drops at high glucose as more carbon exits as acetate/CO2 overflow.</p>
+    <h3>Result</h3>
+    <img src="nutrient_sweep.png" alt="nutrient_sweep" />
+    <h3>Summary</h3>
+    <table><tr><td>Phenomenon</td><td>Saturating yield curve</td></tr><tr><td>GSM</td><td><code>textbook</code> — Escherichia coli (core GSM, 95 rxns)<br><span style='font-size:12px;color:#666'>biomass reaction: <code>Biomass_Ecoli_core</code></span></td></tr><tr><td>CRM</td><td><code>monod</code></td></tr><tr><td>Integration</td><td>240 steps × 0.05 hr = 12.0 hr simulated</td></tr><tr><td>Wall-clock time</td><td>1.21 s</td></tr><tr><td>Range</td><td>glucose0 ∈ [1.0, 80.0] mmol/L (7 points)</td></tr><tr><td>Biomass range</td><td>0.099 → 7.421 gDW/L</td></tr></table>
+    <h3>Configuration</h3>
+    <pre class="config">model_file        = &#x27;textbook&#x27;   # Escherichia coli (core GSM, 95 rxns)
+biomass_reaction  = &#x27;Biomass_Ecoli_core&#x27;
+crm.type          = monod
+crm.params        = {&#x27;kinetic_params&#x27;: {&#x27;glucose&#x27;: (0.5, 10.0), &#x27;acetate&#x27;: (0.5, 3.0)}}
+substrate_update_reactions = {&#x27;glucose&#x27;: &#x27;EX_glc__D_e&#x27;, &#x27;acetate&#x27;: &#x27;EX_ac_e&#x27;}
+bounds            = {&#x27;EX_o2_e&#x27;: {&#x27;lower&#x27;: -20.0, &#x27;upper&#x27;: 1000.0}, &#x27;ATPM&#x27;: {&#x27;lower&#x27;: 1.0, &#x27;upper&#x27;: 1.0}}</pre>
+  </section>
+
+  <section id="community">
+    <h2>Community</h2>
+    <div class="phenomenon">Niche differentiation and cross-feeding · CRM: <code>monod</code></div>
+    <p style="margin-top:0.8rem">Two E. coli core GSMs share a single glucose+acetate pool with no spatial separation. Species &#x27;glucose_specialist&#x27; has a strong Monod preference for glucose (high Vmax_glc, low Vmax_ac) and a tight O2 cap that forces acetate overflow. Species &#x27;acetate_specialist&#x27; has low glucose affinity and high acetate Vmax. Early on the glucose specialist dominates, secreting acetate; the acetate specialist then grows on the acetate byproduct — niche partitioning by cross-feeding, visible as two offset growth phases on the same GSM.</p>
+    <h3>Result</h3>
+    <img src="community.png" alt="community" />
+    <h3>Summary</h3>
+    <table><tr><td>Phenomenon</td><td>Niche differentiation and cross-feeding</td></tr><tr><td>GSM (glucose_specialist)</td><td><code>textbook</code> — Escherichia coli (core GSM, 95 rxns)<br><span style='font-size:12px;color:#666'>biomass reaction: <code>Biomass_Ecoli_core</code></span></td></tr><tr><td>GSM (acetate_specialist)</td><td><code>textbook</code> — Escherichia coli (core GSM, 95 rxns)<br><span style='font-size:12px;color:#666'>biomass reaction: <code>Biomass_Ecoli_core</code></span></td></tr><tr><td>CRM</td><td><code>monod</code></td></tr><tr><td>Integration</td><td>360 steps × 0.05 hr = 18.0 hr simulated</td></tr><tr><td>Wall-clock time</td><td>0.25 s</td></tr><tr><td>Final biomass (glucose_specialist)</td><td>0.850 gDW/L &nbsp; · &nbsp; peak μ = 0.563 1/hr</td></tr><tr><td>Final biomass (acetate_specialist)</td><td>0.032 gDW/L &nbsp; · &nbsp; peak μ = 0.221 1/hr</td></tr><tr><td>Final glucose (shared pool)</td><td>0.000 mmol/L</td></tr><tr><td>Final acetate (shared pool)</td><td>9.620 mmol/L</td></tr></table>
+    <h3>Configuration</h3>
+    <pre class="config"># glucose_specialist
+model_file        = &#x27;textbook&#x27;   # Escherichia coli (core GSM, 95 rxns)
+biomass_reaction  = &#x27;Biomass_Ecoli_core&#x27;
+crm.type          = monod
+crm.params        = {&#x27;kinetic_params&#x27;: {&#x27;glucose&#x27;: (0.3, 12.0), &#x27;acetate&#x27;: (2.0, 1.0)}}
+substrate_update_reactions = {&#x27;glucose&#x27;: &#x27;EX_glc__D_e&#x27;, &#x27;acetate&#x27;: &#x27;EX_ac_e&#x27;}
+bounds            = {&#x27;EX_o2_e&#x27;: {&#x27;lower&#x27;: -6.0, &#x27;upper&#x27;: 1000.0}, &#x27;ATPM&#x27;: {&#x27;lower&#x27;: 1.0, &#x27;upper&#x27;: 1.0}}
+
+# acetate_specialist
+model_file        = &#x27;textbook&#x27;   # Escherichia coli (core GSM, 95 rxns)
+biomass_reaction  = &#x27;Biomass_Ecoli_core&#x27;
+crm.type          = monod
+crm.params        = {&#x27;kinetic_params&#x27;: {&#x27;glucose&#x27;: (5.0, 1.5), &#x27;acetate&#x27;: (0.2, 6.0)}}
+substrate_update_reactions = {&#x27;glucose&#x27;: &#x27;EX_glc__D_e&#x27;, &#x27;acetate&#x27;: &#x27;EX_ac_e&#x27;}
+bounds            = {&#x27;EX_o2_e&#x27;: {&#x27;lower&#x27;: -20.0, &#x27;upper&#x27;: 1000.0}, &#x27;ATPM&#x27;: {&#x27;lower&#x27;: 1.0, &#x27;upper&#x27;: 1.0}}</pre>
+  </section>
+
+
+
+  <section class="summary-section" id="summary">
+    <h2>Run Summary</h2>
+    <table>
+      <thead>
+        <tr>
+          <th>Experiment</th>
+          <th>Phenomenon</th>
+          <th>CRM</th>
+          <th>GSM</th>
+          <th>Sim time</th>
+          <th>Wall-clock</th>
+        </tr>
+      </thead>
+      <tbody><tr><td><a href='#diauxie'>Diauxie</a></td><td>Sequential substrate utilization</td><td><code>monod</code></td><td><code>textbook</code></td><td>18.0 h</td><td>0.22 s</td></tr><tr><td><a href='#overflow'>Overflow</a></td><td>Crabtree-like acetate secretion</td><td><code>macarthur</code></td><td><code>textbook</code></td><td>15.0 h</td><td>0.11 s</td></tr><tr><td><a href='#adaptive'>Adaptive</a></td><td>Dynamic trait reallocation</td><td><code>adaptive</code></td><td><code>textbook</code></td><td>24.0 h</td><td>0.38 s</td></tr><tr><td><a href='#tilman'>Tilman</a></td><td>R-independent uptake</td><td><code>macarthur</code></td><td><code>textbook</code></td><td>15.0 h</td><td>0.10 s</td></tr><tr><td><a href='#cross_feed'>Cross Feed</a></td><td>Metabolic leakage and re-uptake</td><td><code>micrm</code></td><td><code>textbook</code></td><td>18.0 h</td><td>0.13 s</td></tr><tr><td><a href='#nutrient_sweep'>Nutrient Sweep</a></td><td>Saturating yield curve</td><td><code>monod</code></td><td><code>textbook</code></td><td>12.0 h</td><td>1.21 s</td></tr><tr><td><a href='#community'>Community</a></td><td>Niche differentiation and cross-feeding</td><td><code>monod</code></td><td><code>textbook, textbook</code></td><td>18.0 h</td><td>0.25 s</td></tr></tbody>
+      <tfoot><tr><td colspan='5' style='text-align:right;font-weight:600'>Total wall-clock</td><td style='font-weight:600'>2.39 s</td></tr></tfoot>
+    </table>
+  </section>
+
+
+
+  <section class="reproduce" id="reproduce">
+    <h2>How to reproduce</h2>
+    <p>Every experiment in this report is generated by the same CLI
+    (<code>crm_dfba.experiments.test_suite</code>) running against the
+    genome-scale metabolic models bundled under <code>crm_dfba/models/</code>.
+    Clone the repo and run the suite to regenerate this page.</p>
+
+    <h3>Re-run locally</h3>
+<pre class="config">git clone https://github.com/vivarium-collective/CRM-FBA
+cd CRM-FBA
+git checkout 518f9265
+pip install -e .
+python -m crm_dfba.experiments.test_suite</pre>
+
+    <h3>Subset / headless</h3>
+<pre class="config">python -m crm_dfba.experiments.test_suite --only diauxie community
+python -m crm_dfba.experiments.test_suite --no-open</pre>
+
+    <h3>Author a new experiment</h3>
+    <p>Add an <code>Experiment(...)</code> entry to
+    <code>EXPERIMENT_REGISTRY</code> in
+    <code>crm_dfba/experiments/test_suite.py</code>. Point
+    <code>build_cfg</code> at a CRM+GSM config (helper
+    <code>_cfg_from(model_key, crm, bounds)</code> uses the bundled
+    model registry). For multi-consumer experiments set
+    <code>runner_override=_simulate_community</code> and list species in
+    <code>extra_meta['species']</code>.</p>
+  </section>
+
+
+</body>
+</html>

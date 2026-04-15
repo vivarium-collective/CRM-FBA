@@ -3,7 +3,7 @@ CRM-FBA experiment suite
 ========================
 
 Runs a registry of diverse CRM-coupled dFBA experiments, saves a result
-plot per experiment, and generates an HTML report at ``doc/index.html``
+plot per experiment, and generates an HTML report at ``docs/index.html``
 in the style of the viva-munk report. Run:
 
     python -m crm_dfba.experiments.test_suite           # runs all, opens browser
@@ -37,7 +37,7 @@ from crm_dfba.models import get_model_spec
 
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
-DOC_DIR = REPO_ROOT / "doc"
+DOC_DIR = REPO_ROOT / "docs"
 _core = allocate_core()
 
 
@@ -747,32 +747,55 @@ def _plot_for(result: RunResult, out_path: Path) -> None:
 # ---------------------------------------------------------------------------
 # HTML report
 # ---------------------------------------------------------------------------
+CRM_FBA_REPO_URL = "https://github.com/vivarium-collective/CRM-FBA"
+
+
 _STYLE = """
-  body { font-family: system-ui, sans-serif; max-width: 1020px; margin: 2rem auto; background: #fafafa; color: #222; padding: 0 1rem; }
+  body { font-family: system-ui, sans-serif; max-width: 960px; margin: 2rem auto;
+         background: #fafafa; color: #222; padding: 0 1rem; }
   h1 { border-bottom: 2px solid #333; padding-bottom: .3rem; }
-  h3 { margin-top: 1.2rem; margin-bottom: 0.4rem; }
-  section { background: #fff; border: 1px solid #ddd; border-radius: 8px; padding: 1.5rem; margin: 1.5rem 0; }
+  h3 { margin-top: 1.2rem; margin-bottom: 0.4rem; font-size: 14px; text-transform: uppercase;
+       letter-spacing: 0.03em; color: #555; }
+  section { background: #fff; border: 1px solid #ddd; border-radius: 8px;
+            padding: 1.5rem; margin: 1.5rem 0; scroll-margin-top: 4.5rem; }
   h2 { margin-top: 0; }
-  table { border-collapse: collapse; margin: .8rem 0; width: 100%; }
+  p  { line-height: 1.5; }
+  table { border-collapse: collapse; margin: .6rem 0; width: 100%; font-size: 13px; }
   td { padding: .3rem .8rem; border: 1px solid #eee; vertical-align: top; }
-  td:first-child { font-weight: 600; width: 200px; }
+  td:first-child { font-weight: 600; width: 200px; background: #fcfcfc; }
   img { max-width: 100%; margin-top: .5rem; border: 1px solid #ddd; border-radius: 4px; }
-  .pill { display: inline-block; padding: 2px 10px; border: 1px solid #b8c7dc; border-radius: 999px; background: #eef3fa; color: #0366d6; font-size: 12px; margin-right: 6px; }
-  .meta { background: #fff; border: 1px solid #ddd; border-radius: 8px; padding: 0.8rem 1.2rem; margin: 1rem 0; font-size: 13px; color: #555; }
+  code { background: #f0f0f0; padding: 1px 6px; border-radius: 4px; font-size: 12px; }
+  pre.config { background: #f6f8fa; border: 1px solid #e4e4e4; border-radius: 6px;
+               padding: 10px 12px; margin: 0; font-family: ui-monospace, monospace;
+               font-size: 12px; overflow-x: auto; }
+  .meta { background: #fff; border: 1px solid #ddd; border-radius: 8px;
+          padding: 0.8rem 1.2rem; margin: 1rem 0; font-size: 13px; color: #555; }
   .meta div { display: inline-block; margin-right: 1.5rem; }
-  .meta code { background: #f0f0f0; padding: 1px 6px; border-radius: 4px; }
   .meta a { color: #0366d6; text-decoration: none; }
-  .experiment-nav { position: sticky; top: 0; z-index: 10; background: #fff; border: 1px solid #ddd; border-radius: 8px;
-                    padding: 0.6rem 1rem; margin: 1rem 0; display: flex; flex-wrap: wrap; gap: 0.5rem; align-items: center;
+  .experiment-nav { position: sticky; top: 0; z-index: 10; background: #fff;
+                    border: 1px solid #ddd; border-radius: 8px;
+                    padding: 0.6rem 1rem; margin: 1rem 0;
+                    display: flex; flex-wrap: wrap; gap: 0.5rem; align-items: center;
                     box-shadow: 0 2px 4px rgba(0,0,0,0.04); }
   .experiment-nav .nav-title { font-weight: 600; margin-right: 0.4rem; color: #555; }
-  .experiment-nav a { padding: 3px 10px; border: 1px solid #ddd; border-radius: 999px; background: #fafafa;
-                      color: #0366d6; text-decoration: none; font-size: 13px; }
+  .experiment-nav a { padding: 3px 10px; border: 1px solid #ddd; border-radius: 999px;
+                      background: #fafafa; color: #0366d6; text-decoration: none; font-size: 13px; }
   .experiment-nav a:hover { background: #eef3fa; border-color: #b8c7dc; }
-  section { scroll-margin-top: 4rem; }
-  pre.config { background: #f7f7f7; border: 1px solid #eee; border-radius: 6px; padding: 0.6rem 0.8rem;
-               font-size: 12px; overflow-x: auto; }
+  .phenomenon { color: #666; font-size: 13px; margin-top: -0.4rem;
+                display: inline-block; padding: 2px 8px; background: #eef3fa;
+                border-radius: 4px; }
+  .summary-section th { background: #f8f8f8; text-align: left; padding: 0.3rem 0.6rem;
+                        border: 1px solid #eee; font-size: 12px; }
+  .summary-section td { font-size: 12px; }
+  .reproduce h3 { text-transform: none; letter-spacing: 0; font-size: 14px; color: #333; }
+  .intro-card { background: #eef6ff; border: 1px solid #c6dcef; border-radius: 8px;
+                padding: 1rem 1.25rem; margin: 1rem 0; font-size: 13px; }
+  .intro-card strong { color: #0b4c8a; }
 """
+
+
+def _pretty_name(name: str) -> str:
+    return name.replace("_", " ").title()
 
 
 def _short_cfg(cfg: Dict[str, Any]) -> str:
@@ -796,30 +819,26 @@ def _gather_meta() -> Dict[str, str]:
         except Exception:
             return ""
     commit = _git(["rev-parse", "HEAD"])
-    remote = _git(["config", "--get", "remote.origin.url"])
-    if remote.endswith(".git"):
-        remote = remote[:-4]
-    if remote.startswith("git@github.com:"):
-        remote = "https://github.com/" + remote[len("git@github.com:"):]
     return {
-        "generated": _dt.datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S UTC"),
+        "generated": _dt.datetime.now(_dt.timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC"),
         "host": socket.gethostname(),
         "commit": commit,
-        "remote": remote,
+        "remote": CRM_FBA_REPO_URL,
     }
 
 
-def _section_html(r: RunResult, doc_dir: Path) -> str:
+def _collect_species_cfgs(exp: Experiment):
+    if exp.runner_override is _simulate_community:
+        return [(sp["name"], sp["build_cfg"]()) for sp in exp.extra_meta["species"]]
+    return [("", exp.build_cfg())]
+
+
+def _section_html(r: RunResult) -> str:
     exp = r.experiment
     img_rel = f"{exp.name}.png"
-
-    # Collect GSM info: may be one (single) or many (community) configs
-    if exp.runner_override is _simulate_community:
-        species_cfgs = [(sp["name"], sp["build_cfg"]()) for sp in exp.extra_meta["species"]]
-        cfg = species_cfgs[0][1]
-    else:
-        species_cfgs = [("", exp.build_cfg())]
-        cfg = species_cfgs[0][1]
+    species_cfgs = _collect_species_cfgs(exp)
+    cfg = species_cfgs[0][1]
+    crm_type = cfg["crm"]["type"]
 
     gsm_rows = []
     for sp_name, sp_cfg in species_cfgs:
@@ -828,52 +847,55 @@ def _section_html(r: RunResult, doc_dir: Path) -> str:
             f"<tr><td>GSM{label}</td>"
             f"<td><code>{sp_cfg.get('model_file')}</code> — "
             f"{_html.escape(str(sp_cfg.get('_organism', '')))}<br>"
-            f"<span style='font-size:12px;color:#666'>biomass: "
+            f"<span style='font-size:12px;color:#666'>biomass reaction: "
             f"<code>{sp_cfg.get('biomass_reaction')}</code></span></td></tr>"
         )
-    crm_type = cfg["crm"]["type"]
 
-    final_rows = [
+    rows = [
         f"<tr><td>Phenomenon</td><td>{_html.escape(exp.phenomenon)}</td></tr>",
         *gsm_rows,
-        f"<tr><td>CRM type</td><td><code>{crm_type}</code></td></tr>",
-        f"<tr><td>Steps × dt</td><td>{exp.steps} × {exp.dt} hr</td></tr>",
+        f"<tr><td>CRM</td><td><code>{crm_type}</code></td></tr>",
+        f"<tr><td>Integration</td><td>{exp.steps} steps × {exp.dt} hr = {exp.steps * exp.dt:.1f} hr simulated</td></tr>",
         f"<tr><td>Wall-clock time</td><td>{r.wall_clock_s:.2f} s</td></tr>",
     ]
     if r.species is not None:
         for sp_name, data in r.species.items():
-            final_rows.append(
+            rows.append(
                 f"<tr><td>Final biomass ({sp_name})</td>"
-                f"<td>{data['biomass'][-1]:.3f} gDW/L &nbsp; "
+                f"<td>{data['biomass'][-1]:.3f} gDW/L &nbsp; · &nbsp; "
                 f"peak μ = {float(np.max(data['mu'])):.3f} 1/hr</td></tr>"
             )
         for res, vals in r.substrates.items():
-            final_rows.append(
+            rows.append(
                 f"<tr><td>Final {res} (shared pool)</td>"
                 f"<td>{vals[-1]:.3f} mmol/L</td></tr>"
             )
     elif r.substrates:
-        final_rows.append(
-            f"<tr><td>Final biomass</td><td>{r.biomass[-1]:.3f} gDW/L</td></tr>"
-        )
+        rows.append(f"<tr><td>Final biomass</td><td>{r.biomass[-1]:.3f} gDW/L</td></tr>")
         for res, vals in r.substrates.items():
-            final_rows.append(
-                f"<tr><td>Final {res}</td><td>{vals[-1]:.3f} mmol/L</td></tr>"
-            )
+            rows.append(f"<tr><td>Final {res}</td><td>{vals[-1]:.3f} mmol/L</td></tr>")
         if r.mu is not None and r.mu.size:
-            final_rows.append(
-                f"<tr><td>Peak μ (FBA)</td><td>{np.max(r.mu):.3f} 1/hr</td></tr>"
-            )
+            rows.append(f"<tr><td>Peak μ (FBA)</td><td>{np.max(r.mu):.3f} 1/hr</td></tr>")
         for res, u in r.crm_uptakes.items():
             peak_u = float(np.max(u)) if u.size else 0.0
             peak_v = float(np.max(-r.fba_fluxes[res])) if r.fba_fluxes.get(res) is not None and r.fba_fluxes[res].size else 0.0
-            final_rows.append(
+            # Skip rows where the resource was effectively inert (nothing to show).
+            if peak_u < 1e-6 and abs(peak_v) < 1e-6:
+                continue
+            rows.append(
                 f"<tr><td>Peak {res} CRM→FBA</td>"
-                f"<td>u={peak_u:.2f} mmol/gDW/hr &nbsp; |v|={peak_v:.2f} mmol/gDW/hr</td></tr>"
+                f"<td>u={peak_u:.2f} &nbsp; · &nbsp; |v|={peak_v:.2f} &nbsp; "
+                f"<span style='font-size:11px;color:#666'>mmol/gDW/hr</span></td></tr>"
             )
-    else:
-        final_rows.append(
-            f"<tr><td>Range</td><td>glucose0 ∈ [{r.t.min():.1f}, {r.t.max():.1f}] mmol/L</td></tr>"
+    elif r.extra:
+        # Sweep
+        rows.append(
+            f"<tr><td>Range</td><td>glucose0 ∈ [{r.t.min():.1f}, {r.t.max():.1f}] mmol/L "
+            f"({len(r.t)} points)</td></tr>"
+        )
+        rows.append(
+            f"<tr><td>Biomass range</td>"
+            f"<td>{r.biomass.min():.3f} → {r.biomass.max():.3f} gDW/L</td></tr>"
         )
 
     cfg_blocks = "\n\n".join(
@@ -883,16 +905,97 @@ def _section_html(r: RunResult, doc_dir: Path) -> str:
 
     return f"""
   <section id="{exp.name}">
-    <h2>{_html.escape(exp.title)}</h2>
-    <span class="pill">{_html.escape(exp.phenomenon)}</span>
-    <span class="pill">CRM: {crm_type}</span>
-    <p>{_html.escape(exp.description)}</p>
+    <h2>{_html.escape(_pretty_name(exp.name))}</h2>
+    <div class="phenomenon">{_html.escape(exp.phenomenon)} · CRM: <code>{crm_type}</code></div>
+    <p style="margin-top:0.8rem">{_html.escape(exp.description)}</p>
     <h3>Result</h3>
     <img src="{img_rel}" alt="{exp.name}" />
     <h3>Summary</h3>
-    <table>{''.join(final_rows)}</table>
+    <table>{''.join(rows)}</table>
     <h3>Configuration</h3>
     <pre class="config">{_html.escape(cfg_blocks)}</pre>
+  </section>
+"""
+
+
+def _summary_section(results: List[RunResult]) -> str:
+    rows = []
+    total_wall = 0.0
+    for r in results:
+        exp = r.experiment
+        species_cfgs = _collect_species_cfgs(exp)
+        gsm_disp = ", ".join(
+            sp_cfg.get("model_file", "") for _, sp_cfg in species_cfgs
+        )
+        crm_type = species_cfgs[0][1]["crm"]["type"]
+        total_wall += r.wall_clock_s
+        rows.append(
+            f"<tr>"
+            f"<td><a href='#{exp.name}'>{_html.escape(_pretty_name(exp.name))}</a></td>"
+            f"<td>{_html.escape(exp.phenomenon)}</td>"
+            f"<td><code>{crm_type}</code></td>"
+            f"<td><code>{gsm_disp}</code></td>"
+            f"<td>{exp.steps * exp.dt:.1f} h</td>"
+            f"<td>{r.wall_clock_s:.2f} s</td>"
+            f"</tr>"
+        )
+    footer = (
+        f"<tr><td colspan='5' style='text-align:right;font-weight:600'>Total wall-clock</td>"
+        f"<td style='font-weight:600'>{total_wall:.2f} s</td></tr>"
+    )
+    return f"""
+  <section class="summary-section" id="summary">
+    <h2>Run Summary</h2>
+    <table>
+      <thead>
+        <tr>
+          <th>Experiment</th>
+          <th>Phenomenon</th>
+          <th>CRM</th>
+          <th>GSM</th>
+          <th>Sim time</th>
+          <th>Wall-clock</th>
+        </tr>
+      </thead>
+      <tbody>{''.join(rows)}</tbody>
+      <tfoot>{footer}</tfoot>
+    </table>
+  </section>
+"""
+
+
+def _reproduce_section(meta: Dict[str, str]) -> str:
+    ref = (meta.get("commit") or "main")[:8]
+    if ref == "main":
+        ref = "main"
+    return f"""
+  <section class="reproduce" id="reproduce">
+    <h2>How to reproduce</h2>
+    <p>Every experiment in this report is generated by the same CLI
+    (<code>crm_dfba.experiments.test_suite</code>) running against the
+    genome-scale metabolic models bundled under <code>crm_dfba/models/</code>.
+    Clone the repo and run the suite to regenerate this page.</p>
+
+    <h3>Re-run locally</h3>
+<pre class="config">git clone {CRM_FBA_REPO_URL}
+cd CRM-FBA
+git checkout {ref}
+pip install -e .
+python -m crm_dfba.experiments.test_suite</pre>
+
+    <h3>Subset / headless</h3>
+<pre class="config">python -m crm_dfba.experiments.test_suite --only diauxie community
+python -m crm_dfba.experiments.test_suite --no-open</pre>
+
+    <h3>Author a new experiment</h3>
+    <p>Add an <code>Experiment(...)</code> entry to
+    <code>EXPERIMENT_REGISTRY</code> in
+    <code>crm_dfba/experiments/test_suite.py</code>. Point
+    <code>build_cfg</code> at a CRM+GSM config (helper
+    <code>_cfg_from(model_key, crm, bounds)</code> uses the bundled
+    model registry). For multi-consumer experiments set
+    <code>runner_override=_simulate_community</code> and list species in
+    <code>extra_meta['species']</code>.</p>
   </section>
 """
 
@@ -908,11 +1011,11 @@ def generate_html_report(results: List[RunResult], doc_dir: Path) -> Path:
             f'<a href="{meta["remote"]}/commit/{meta["commit"]}">'
             f'<code>{short}</code></a></div>'
         )
-    nav_links = "".join(
-        f'<a href="#{r.experiment.name}">{_html.escape(r.experiment.title)}</a>'
+    nav_links = "\n  ".join(
+        f'<a href="#{r.experiment.name}">{_html.escape(_pretty_name(r.experiment.name))}</a>'
         for r in results
     )
-    sections = "".join(_section_html(r, doc_dir) for r in results)
+    sections = "".join(_section_html(r) for r in results)
     html = f"""<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -922,30 +1025,39 @@ def generate_html_report(results: List[RunResult], doc_dir: Path) -> Path:
 </head>
 <body>
 <h1>CRM-FBA experiments</h1>
-<p>A suite of CRM-coupled dynamic FBA simulations on the <em>E. coli</em>
-core GSM, illustrating ecological and microbial-metabolic phenomena through
-different Consumer Resource Model / FBA couplings.</p>
-<p>Each experiment plot makes the coupling explicit with four panels:
-<strong>(A)</strong> the system trajectory (biomass + extracellular resources);
-<strong>(B)</strong> the <em>CRM component</em>, i.e. the per-resource uptake
-rate <code>u_a(t)</code> that the CRM prescribes and which the process writes
-into <code>EX_rxn.lower_bound = −u_a</code>;
-<strong>(C)</strong> the <em>FBA result</em>, the realized exchange flux
-<code>v_a(t)</code> (negative = uptake, positive = secretion) plotted against
-the CRM-imposed envelope <code>−u_a</code> — where the two curves touch, FBA
-is CRM-limited; where they separate, FBA is stoichiometry- or O₂-limited;
-<strong>(D)</strong> the FBA-realized growth rate <code>μ(t)</code> (plus any
-CRM-internal state such as Adaptive's allocation vector <code>A_a</code>).</p>
+
+<div class="intro-card">
+<strong>CRM-coupled dynamic FBA.</strong> Each experiment in this suite
+runs a genome-scale metabolic model (GSM) under Flux Balance Analysis,
+with exchange-reaction lower bounds set by a Consumer Resource Model
+(CRM) from a pluggable registry (MacArthur, Adaptive, MCRM, MiCRM,
+Monod). The figures separate the two layers explicitly — panel <b>(B)</b>
+shows the <em>CRM-prescribed</em> uptake rate <code>u_a(t)</code>
+(the input to <code>EX_rxn.lower_bound = −u_a</code>), panel <b>(C)</b>
+shows the <em>FBA-realized</em> exchange flux <code>v_a(t)</code> next to
+the CRM envelope so the coupling is visible at a glance.
+</div>
+
 <div class="meta">
   <div><strong>Generated:</strong> {meta['generated']}</div>
   <div><strong>On:</strong> {_html.escape(meta['host'])}</div>
   {commit_html}
+  <div><strong>Source:</strong> <a href="{meta['remote']}">vivarium-collective/CRM-FBA</a></div>
 </div>
+
 <nav class="experiment-nav">
-  <span class="nav-title">Experiments:</span>
+  <span class="nav-title">Jump to:</span>
   {nav_links}
+  <a href="#summary">Summary</a>
+  <a href="#reproduce">Reproduce</a>
 </nav>
+
 {sections}
+
+{_summary_section(results)}
+
+{_reproduce_section(meta)}
+
 </body>
 </html>
 """
