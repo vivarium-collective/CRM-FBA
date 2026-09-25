@@ -1,0 +1,27 @@
+schema_version: 2
+name: CRM_FBA
+created: "2026-09-25"
+plugin_version: 0.21.0
+package_path: crm_dfba
+
+# The arrays below start empty; the dashboard populates them as you work.
+# Hand-editing is fine for small adds, but the dashboard's writers also keep
+# cross-references (studies, runs, viz wiring) consistent.
+
+# Observable specs: name + store_path + index_by. Populated by the Studies tab.
+observables: []
+
+# Visualization wiring (address + config). Populated by the Visualizations tab
+# and /viva-viz.
+visualizations: []
+
+# Reproducible simulation specs (composite + steps + params). Populated by the
+# Composites tab "Run" button and by /viva-study run-baseline.
+simulations: []
+
+# Workspace-scoped datasets (file path + format + provenance).
+datasets: []
+
+references_bib: references/papers.bib
+server:
+  enabled: false
