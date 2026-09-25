@@ -5,3 +5,7 @@ build/
 dist/
 .venv/
 docs/*_bigraph
+
+# vivarium-workbench machine state (like .git/ — per-checkout, not tracked)
+.pbg/
+reports/published/

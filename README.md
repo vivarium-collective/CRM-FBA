@@ -1,8 +1,14 @@
 # CRM-FBA
 
-### **[→ Experiment report](https://vivarium-collective.github.io/CRM-FBA/)**
+### **[→ Experiment report](https://vivarium-collective.github.io/CRM-FBA/)** · **[→ Read-only workbench](https://vivarium-collective.github.io/CRM-FBA/workbench/)**
 
 [![community experiment preview](docs/community.png)](https://vivarium-collective.github.io/CRM-FBA/)
+
+The [read-only workbench](https://vivarium-collective.github.io/CRM-FBA/workbench/)
+is a static, server-free mirror of this repo as a
+[vivarium-workbench](https://github.com/vivarium-collective/vivarium-workbench)
+workspace — browse the composite, registry, and any studies with no install.
+Rebuild it with `bash scripts/publish_workbench.sh`.
 
 A [process-bigraph](https://github.com/vivarium-collective/process-bigraph)
 **composite** that runs dynamic Flux Balance Analysis with exchange bounds
