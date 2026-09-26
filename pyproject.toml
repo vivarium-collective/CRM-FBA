@@ -13,6 +13,11 @@ dependencies = [
     "scipy",
     "cobra",
     "process-bigraph",
+    # Declared explicitly (used transitively via process-bigraph) so the
+    # workbench's discover_generators() — which walks distributions that depend
+    # on bigraph-schema — imports crm_dfba and registers its @composite_generator
+    # composites in every process, not only via the workspace-package path.
+    "bigraph-schema",
 ]
 
 [project.optional-dependencies]

@@ -1,0 +1,19 @@
+{
+  "insight": "",
+  "overall": "within_tol",
+  "schema": "conclusion_card/v1",
+  "tracks": {
+    "biological_validation": {
+      "basis": "",
+      "result": "UNKNOWN:not_started"
+    },
+    "explanatory_gain": {
+      "basis": "",
+      "result": "GAP"
+    },
+    "regression_compatibility": {
+      "basis": "",
+      "result": "PASS"
+    }
+  }
+}
