@@ -8,16 +8,28 @@
 #
 #     https://vivarium-collective.github.io/CRM-FBA/workbench/
 #
-# Requires `vivarium-workbench-publish` on PATH (from a venv with
-# vivarium-workbench installed). Run from the workspace root.
+# IMPORTANT: build from the workspace's OWN .venv (crm_dfba + vivarium-workbench
+# only). Composite discovery walks every installed process-bigraph package, so
+# a shared venv that also has sibling workspaces (viva-munk, spatio-flux, ...)
+# leaks their composites into this snapshot. Set one up once with:
+#
+#     uv venv .venv && VIRTUAL_ENV=.venv uv pip install -e . \
+#         && VIRTUAL_ENV=.venv uv pip install vivarium-workbench
+#
 set -euo pipefail
 WS_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 OUT="$WS_ROOT/docs/workbench"
 BASE_PATH="/CRM-FBA/workbench"
 
+# Prefer the workspace's own venv binary; fall back to PATH.
+PUBLISH="$WS_ROOT/.venv/bin/vivarium-workbench-publish"
+[ -x "$PUBLISH" ] || PUBLISH="vivarium-workbench-publish"
+
 rm -rf "$OUT"
+# Clear any stale registry / composite-state cache from a previous build.
+rm -rf "$WS_ROOT/.pbg/registry-catalog" "$WS_ROOT/.pbg/composite-state-cache"
 PYTHONPATH="$WS_ROOT${PYTHONPATH:+:$PYTHONPATH}" \
-  vivarium-workbench-publish \
+  "$PUBLISH" \
     --workspace "$WS_ROOT" \
     --out "$OUT" \
     --base-path "$BASE_PATH"
