@@ -19,6 +19,7 @@ from process_bigraph.composite_generator import composite_generator
 
 from crm_dfba.core import register_types, register_processes
 from crm_dfba.demo import CRM_CONFIGS, build_document
+from crm_dfba.composites.community import community_document
 
 
 _CORE_EXTENSIONS = [register_types, register_processes]
@@ -61,3 +62,18 @@ def _make_generator(variant: str, crm_cfg: dict):
 _GENERATORS = {
     variant: _make_generator(variant, cfg) for variant, cfg in CRM_CONFIGS.items()
 }
+
+
+# The showcase composite: a two-species community (glucose + acetate
+# specialists) sharing one pool, cross-feeding via acetate overflow.
+@composite_generator(
+    name="crm_fba_community",
+    description=(
+        "Two-species E. coli community (glucose + acetate specialists) sharing "
+        "one glucose/acetate pool: niche differentiation by acetate cross-feeding."
+    ),
+    default_n_steps=360,
+    core_extensions=_CORE_EXTENSIONS,
+)
+def crm_fba_community(core=None):
+    return community_document()
