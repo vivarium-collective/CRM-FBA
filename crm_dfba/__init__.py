@@ -17,3 +17,9 @@ __all__ = [
     "CRM_REGISTRY", "get_crm", "register_crm",
     "MODEL_REGISTRY", "get_model_spec",
 ]
+
+# Fire the @composite_generator side-effects so the vivarium-workbench composite
+# browser discovers the CRM-FBA composites. Imported last, after the names above
+# are bound (crm_dfba.composites imports crm_dfba.demo, which imports
+# crm_dfba_spec from this module).
+from crm_dfba import composites as _composites  # noqa: E402,F401
