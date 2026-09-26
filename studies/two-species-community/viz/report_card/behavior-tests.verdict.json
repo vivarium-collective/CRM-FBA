@@ -1,0 +1,28 @@
+{
+  "count_split": {
+    "acceptance_criteria": {
+      "fail": 0,
+      "pass": 0,
+      "total": 0
+    },
+    "committed_rerunnable": 0,
+    "expected_fail": {
+      "behaved": 0,
+      "total": 0
+    },
+    "label": "pins: 0/0; acceptance: 0/0",
+    "narrated": 0,
+    "regression_pins": {
+      "fail": 0,
+      "pass": 0,
+      "total": 0
+    },
+    "unclassified": 0
+  },
+  "n_fail": 0,
+  "n_pass": 0,
+  "n_total": 0,
+  "overall": "ungraded",
+  "schema": "behavior_test_card/v1",
+  "tests": []
+}

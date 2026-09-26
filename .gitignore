@@ -9,3 +9,8 @@ docs/*_bigraph
 # vivarium-workbench machine state (like .git/ — per-checkout, not tracked)
 .pbg/
 reports/published/
+# Locally-rendered workspace report (the published copy lives in docs/workbench/)
+/reports/
+# SQLite run-db sidecars
+*.db-wal
+*.db-shm

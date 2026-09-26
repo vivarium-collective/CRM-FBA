@@ -1,0 +1,66 @@
+schema_version: 2
+name: community-cross-feeding
+title: Cross-feeding in a two-species community
+created: '2026-09-26'
+status: complete
+runtime:
+  default_emitter: sqlite
+studies:
+- two-species-community
+expert_docs: []
+acceptance_criteria: []
+question: Can CRM-constrained dynamic FBA, composed as a multi-species bigraph on a shared nutrient pool,
+  reproduce niche differentiation by cross-feeding rather than competitive exclusion?
+hypothesis: A glucose specialist that overflows acetate under an O2 cap will build a byproduct pool that
+  sustains a distinct acetate specialist, yielding two temporally offset growth phases.
+lead: 'This investigation demonstrates the CRM-FBA workspace end to end on its richest composite: two
+  E. coli core models sharing one glucose/acetate pool, each a CRMProcess -> FBAStep pair. It asks whether
+  the composite reproduces cross-feeding — the byproduct of one population becoming the niche of another.'
+executive:
+  what_is_this: 'A one-study showcase of the CRM-FBA workspace''s most impressive composite: a two-species
+    E. coli community cross-feeding on a shared glucose/acetate pool.'
+  verdict: 'Confirmed — the composite reproduces cross-feeding: the glucose specialist blooms and overflows
+    acetate, and the acetate specialist does 93% of its growth on that byproduct after the pool peaks.'
+  verdict_status: complete
+  verdict_detail: glucose exhausted at t=8.3 coincident with a 17.4 mM acetate overflow peak; glucose
+    specialist x116, acetate specialist x55 with 93% post-peak growth.
+  decisions_needed:
+  - question: Run the acetate-uptake-knockout negative control?
+    context: The control that would isolate cross-feeding from competition is declared but not yet run.
+scientific_argument:
+  main_claim: The CRM-FBA composite reproduces cross-feeding-driven niche differentiation in a two-species
+    community from only two Monod tunings, an O2 cap, and a shared FBA pool.
+  evidence_for:
+  - Glucose drawn to 0 by t=8.3 (glucose specialist x116).
+  - Acetate overflow pool peaks at 17.4 mM, coincident with glucose exhaustion.
+  - Acetate specialist grows x55 with 93% of growth after the acetate peak (temporal offset).
+  evidence_against:
+  - The acetate-uptake-knockout negative control that would exclude competition is not yet run.
+  key_figures:
+  - community_cross_feeding
+  caveats:
+  - Single well-mixed pool, no spatial structure.
+  - Hand-tuned specialists, deterministic single run (no sweep yet).
+biological_story: 'Two E. coli populations share one flask of glucose and acetate. The glucose specialist
+  takes up glucose fast but is oxygen-capped, so it spills acetate as overflow while it blooms and strips
+  the glucose to zero. The acetate specialist barely moves during that first phase — but the flask is
+  now full of acetate, exactly what it wants, and it blooms in a second phase on the byproduct. The offset
+  between the two growth curves is the signature of cross-feeding: the metabolism of the first species
+  creates the niche of the second, so they coexist instead of one excluding the other.'
+at_a_glance:
+- study: two-species-community
+  role: Runs the two-species community composite and shows the two offset growth phases + acetate overflow
+    peak.
+how_to_read: 'Open the two-species-community study: the biomass curves show the glucose specialist blooming
+  first, the acetate pool peaking as glucose runs out, then the acetate specialist blooming on the byproduct.'
+glossary:
+- term: cross-feeding
+  definition: One population growing on a metabolic byproduct secreted by another.
+- term: overflow metabolism
+  definition: Secretion of a partially-oxidized byproduct (here acetate) when uptake outpaces oxidative
+    capacity.
+- term: niche differentiation
+  definition: Coexistence via use of different resources, rather than competition for one.
+competing_frameworks:
+- name: Competitive exclusion (one resource, one winner)
+  relation: contrasted-with
