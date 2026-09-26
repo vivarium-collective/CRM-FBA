@@ -31,7 +31,7 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import numpy as np
 
-from process_bigraph import allocate_core
+from crm_dfba.core import build_core
 
 from crm_dfba import CRMDynamicFBA, crm_dfba_spec
 from crm_dfba.models import get_model_spec
@@ -39,7 +39,7 @@ from crm_dfba.models import get_model_spec
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 DOC_DIR = REPO_ROOT / "docs"
-_core = allocate_core()
+_core = build_core()
 
 
 # ---------------------------------------------------------------------------

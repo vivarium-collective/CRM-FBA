@@ -7,10 +7,11 @@ shared stores for substrates/biomass/uptakes/interval, plus a RAM
 emitter for trajectories. The document is handed to Composite.run.
 """
 from __future__ import annotations
-from process_bigraph import Composite, allocate_core
+from process_bigraph import Composite
 from process_bigraph.emitter import emitter_from_wires, gather_emitter_results
 
 from crm_dfba import crm_dfba_spec
+from crm_dfba.core import build_core
 
 
 RESOURCES = ("glucose", "acetate")
@@ -53,7 +54,7 @@ def build_document(crm_cfg, dt, initial_substrates, initial_biomass):
 
 
 def run_variant(crm_cfg, steps=100, dt=0.05):
-    core = allocate_core()
+    core = build_core()
     doc = build_document(
         crm_cfg,
         dt=dt,

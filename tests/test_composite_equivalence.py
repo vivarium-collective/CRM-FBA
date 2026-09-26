@@ -5,10 +5,11 @@ trajectory-for-trajectory, across every CRM variant.
 from __future__ import annotations
 
 import pytest
-from process_bigraph import Composite, allocate_core
+from process_bigraph import Composite
 from process_bigraph.emitter import emitter_from_wires, gather_emitter_results
 
 from crm_dfba import CRMDynamicFBAMonolithic, crm_dfba_spec
+from crm_dfba.core import build_core
 from crm_dfba.demo import CRM_CONFIGS, SUBSTRATE_RXNS, STATIC_BOUNDS
 
 
@@ -26,7 +27,7 @@ TOL = 1e-9
 
 
 def run_monolith(crm_cfg):
-    core = allocate_core()
+    core = build_core()
     proc = CRMDynamicFBAMonolithic(
         config={**BASE_CONFIG, "crm": crm_cfg}, core=core
     )
@@ -43,7 +44,7 @@ def run_monolith(crm_cfg):
 
 
 def run_composite(crm_cfg):
-    core = allocate_core()
+    core = build_core()
     config = {**BASE_CONFIG, "crm": crm_cfg}
     state = {
         "substrates": dict(INITIAL_SUBSTRATES),
