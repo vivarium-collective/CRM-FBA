@@ -1,0 +1,1 @@
+{"error": "readout_validation unavailable: No module named 'polars'", "emitter": {"name": "xarray", "class_name": "XArrayEmitter", "module": "viva_emitters.xarray_emitter", "output_kind": "zarr", "interval": 1, "buffer": 3, "output_dir": "<study>/runs.<run_id>.zarr", "scope": "declared"}}
