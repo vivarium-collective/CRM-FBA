@@ -2,6 +2,6 @@
   "mode": "snapshot",
   "smsApiBase": "",
   "repo": "https://github.com/vivarium-collective/CRM-FBA.git",
-  "commit": "af1360b9ab30b42e32efc9c8ef8404394afbab9d",
-  "generated_from_ref": "chore/republish-latest-workbench"
+  "commit": "641a71d919b81d750d7c1e52fa673e3e542ae853",
+  "generated_from_ref": "chore/republish-wb-eb03bb12"
 }
