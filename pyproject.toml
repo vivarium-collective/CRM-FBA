@@ -11,7 +11,9 @@ requires-python = ">=3.10"
 dependencies = [
     "numpy",
     "scipy",
-    "cobra",
+    # COBRApy FBA + the bundled GEMs are single-sourced from viva-cobra (which
+    # pulls in cobra); crm_dfba re-exports FBAStep + MODEL_REGISTRY from it.
+    "viva-cobra @ git+https://github.com/vivarium-collective/viva-cobra.git@main",
     "process-bigraph",
     # Declared explicitly (used transitively via process-bigraph) so the
     # workbench's discover_generators() — which walks distributions that depend
