@@ -57,22 +57,121 @@
     if (state.cm) { try { state.cm.setOption('mode', cmMode(lang)); } catch (e) {} }
   }
 
-  // ── expand / collapse ──
-  function isOpen() { var r = rail(); return r && !r.classList.contains('viv-code-collapsed'); }
-  function open() {
-    var r = rail(); if (!r) return;
-    r.classList.remove('viv-code-collapsed');
-    document.body.classList.add('viv-code-open');
-    try { localStorage.setItem('viv.code.open', '1'); } catch (e) {}
-    if (state.cm) setTimeout(function () { try { state.cm.refresh(); } catch (e) {} }, 30);
+  // ── expand / collapse (delegated to the shared dockable-panel engine) ──
+  // The rail is a VivPanelDock panel (like the chat): dockable left/right/bottom,
+  // drag-re-dockable by its header, resizable, launched from the left nav rail. The
+  // controller (dockCtl) is created in init(); these thin wrappers keep the old
+  // ProcessCode API (open/collapse/toggle) working for the rest of this file.
+  var dockCtl = null;
+  function isOpen() { return dockCtl ? dockCtl.isOpen() : false; }
+  // Mirror the panel's --viv-code-w onto <body> so the fill-the-pane (maximized)
+  // CSS — which pins a RIGHT-docked rail fixed and shrinks the card by that width —
+  // tracks a user-resized rail, not just the 460px default (see style.css
+  // .pcard-maximized + .viv-code-open).
+  function _syncRailWidth() {
+    try {
+      var r = rail(); if (!r) return;
+      var w = getComputedStyle(r).getPropertyValue('--viv-code-w').trim();
+      if (w) document.body.style.setProperty('--viv-code-w', w);
+    } catch (e) {}
   }
-  function collapse() {
-    var r = rail(); if (!r) return;
-    r.classList.add('viv-code-collapsed');
-    document.body.classList.remove('viv-code-open');
-    try { localStorage.setItem('viv.code.open', '0'); } catch (e) {}
+  function _refreshCm() { if (state.cm) setTimeout(function () { try { state.cm.refresh(); } catch (e) {} }, 30); }
+  function open() { if (dockCtl) dockCtl.open(); }
+  function collapse() { if (dockCtl) dockCtl.close(); }
+  function toggle() { if (dockCtl) dockCtl.toggle(); }
+  function dockMenu(anchor) { if (dockCtl) dockCtl.openDockMenu(anchor); }
+  // Open the current source in a separate window, then close the in-page rail.
+  function popout() {
+    if (!window.VivPanelDock) return;
+    window.VivPanelDock.popout('code', state.popout || {});
+    collapse();
   }
-  function toggle() { if (isOpen()) collapse(); else open(); }
+
+  // ── Browse available Processes & Composites, right from the panel ──────────
+  // A searchable dropdown (grouped Processes / Composites) that opens the pick
+  // straight into this panel via openProcess/openComposite — no Registry trip.
+  var _browseMenu = null, _browseCache = null;
+  function _onBrowseDoc(ev) { if (_browseMenu && !_browseMenu.contains(ev.target)) _closeBrowse(); }
+  function _onBrowseKey(ev) { if (ev.key === 'Escape') _closeBrowse(); }
+  function _closeBrowse() {
+    if (!_browseMenu) return;
+    _browseMenu.remove(); _browseMenu = null;
+    document.removeEventListener('mousedown', _onBrowseDoc, true);
+    document.removeEventListener('keydown', _onBrowseKey, true);
+  }
+  function _loadBrowse() {
+    if (_browseCache) return Promise.resolve(_browseCache);
+    var J = function (r) { return r.ok ? r.json() : null; };
+    return Promise.all([
+      fetch(_api('/api/registry')).then(J).catch(function () { return null; }),
+      fetch(_api('/api/composites')).then(J).catch(function () { return null; }),
+    ]).then(function (res) {
+      var reg = res[0] || {}, comp = res[1] || {};
+      var procs = (reg.processes || []).map(function (p) {
+        return { kind: 'process', address: p.address,
+                 label: p.name || String(p.address || '').split(/[.:]/).pop(), hint: p.source || p.module || '' };
+      }).filter(function (p) { return p.address; });
+      var list = Array.isArray(comp) ? comp : (comp.composites || []);
+      var comps = (list || []).map(function (c) {
+        return { kind: 'composite', id: c.id, module: c.module || '', source_path: c.source_path || '',
+                 label: c.name || String(c.id || '').split('.').pop(), hint: c.source || c.module || '' };
+      }).filter(function (c) { return c.id; });
+      _browseCache = { procs: procs, comps: comps };
+      return _browseCache;
+    });
+  }
+  function _browseRows(data, q) {
+    q = (q || '').trim().toLowerCase();
+    function match(it) { return !q || (it.label + ' ' + (it.address || it.id) + ' ' + it.hint).toLowerCase().indexOf(q) >= 0; }
+    function group(title, items, attrs) {
+      var rows = items.filter(match);
+      if (!rows.length) return '';
+      return '<div class="vp-browse-group">' + title + ' <span class="vp-browse-n">' + rows.length + '</span></div>' +
+        rows.map(function (it) {
+          return '<button type="button" class="vp-pop-item vp-browse-row" ' + attrs(it) + '>' +
+            '<span class="vp-browse-name">' + esc(it.label) + '</span>' +
+            '<code class="vp-browse-addr">' + esc(it.address || it.id) + '</code></button>';
+        }).join('');
+    }
+    var html =
+      group('Processes', data.procs, function (it) { return 'data-kind="process" data-address="' + esc(it.address) + '"'; }) +
+      group('Composites', data.comps, function (it) {
+        return 'data-kind="composite" data-id="' + esc(it.id) + '" data-module="' + esc(it.module) + '" data-src="' + esc(it.source_path) + '"';
+      });
+    return html || '<div class="vp-browse-empty">No matches.</div>';
+  }
+  function browseMenu(anchor) {
+    if (_browseMenu) { _closeBrowse(); return; }   // toggle
+    var menu = document.createElement('div');
+    menu.className = 'vp-pop vp-browse-menu';
+    menu.setAttribute('role', 'menu');
+    menu.innerHTML =
+      '<input type="text" class="vp-browse-search" placeholder="Search processes & composites…" aria-label="Search" spellcheck="false">' +
+      '<div class="vp-browse-list"><div class="vp-browse-empty">Loading…</div></div>';
+    document.body.appendChild(menu);
+    var r = anchor.getBoundingClientRect();
+    menu.style.top = Math.round(r.bottom + 4) + 'px';
+    menu.style.left = Math.round(Math.min(r.left, window.innerWidth - menu.offsetWidth - 8)) + 'px';
+    _browseMenu = menu;
+    var search = menu.querySelector('.vp-browse-search');
+    var listEl = menu.querySelector('.vp-browse-list');
+    var data = null;
+    _loadBrowse().then(function (d) { data = d; listEl.innerHTML = _browseRows(data, ''); },
+                       function () { listEl.innerHTML = '<div class="vp-browse-empty">Could not load the catalog.</div>'; });
+    search.addEventListener('input', function () { if (data) listEl.innerHTML = _browseRows(data, search.value); });
+    menu.addEventListener('click', function (ev) {
+      var row = ev.target.closest('.vp-browse-row'); if (!row) return;
+      _closeBrowse();
+      if (!isOpen()) open();
+      if (row.getAttribute('data-kind') === 'process') openProcess(row.getAttribute('data-address'));
+      else openComposite({ id: row.getAttribute('data-id'), module: row.getAttribute('data-module'), source_path: row.getAttribute('data-src') });
+    });
+    setTimeout(function () {
+      document.addEventListener('mousedown', _onBrowseDoc, true);
+      document.addEventListener('keydown', _onBrowseKey, true);
+      try { search.focus(); } catch (e) { /* ignore */ }
+    }, 0);
+  }
 
   function refreshDirty() {
     var saveBtn = $('viv-code-save'), revertBtn = $('viv-code-revert');
@@ -249,6 +348,7 @@
   // ── public open() entrypoints ──
   function openProcess(address) {
     if (!address) return;
+    state.popout = { address: address };          // remembered so Pop out can reopen this view
     load({
       title: address.split(/[.:]/).pop() || 'Process',
       subtitle: address,
@@ -261,6 +361,7 @@
   function openComposite(desc) {
     desc = desc || {};
     var id = desc.id || '';
+    state.popout = { composite: id, module: desc.module || '', source_path: desc.source_path || '' };
     var q = '/api/composites/source?id=' + encodeURIComponent(id) +
       '&module=' + encodeURIComponent(desc.module || '') +
       '&source_path=' + encodeURIComponent(desc.source_path || '');
@@ -428,36 +529,37 @@
       .catch(function (e) { state.loading = false; setStatus('Save failed: ' + e, 'error'); refreshDirty(); });
   }
 
-  // ── drag-to-resize (panel grows leftward) ──
-  function initResize() {
-    var handle = $('viv-code-resize-handle'), r = rail();
-    if (!handle || !r) return;
-    var startX = 0, startW = 0, dragging = false;
-    try {
-      var saved = parseInt(localStorage.getItem('viv.code.width') || '0', 10);
-      if (saved >= 320 && saved <= 1100) r.style.setProperty('--viv-code-w', saved + 'px');
-    } catch (e) {}
-    handle.addEventListener('mousedown', function (ev) {
-      dragging = true; startX = ev.clientX; startW = r.getBoundingClientRect().width;
-      document.body.style.userSelect = 'none'; ev.preventDefault();
-    });
-    window.addEventListener('mousemove', function (ev) {
-      if (!dragging) return;
-      var w = Math.max(320, Math.min(1100, startW + (startX - ev.clientX)));
-      r.style.setProperty('--viv-code-w', w + 'px');
-      if (state.cm) { try { state.cm.refresh(); } catch (e) {} }
-    });
-    window.addEventListener('mouseup', function () {
-      if (!dragging) return;
-      dragging = false; document.body.style.userSelect = '';
-      try { localStorage.setItem('viv.code.width', String(Math.round(rail().getBoundingClientRect().width))); } catch (e) {}
-    });
-  }
+  // Code glyph for the drag ghost while re-docking.
+  var CODE_GHOST = '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" ' +
+    'fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">' +
+    '<polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>';
 
   function init() {
-    if (!rail()) return;
-    initResize();
-    try { if (localStorage.getItem('viv.code.open') === '1') open(); } catch (e) {}
+    var r = rail(); if (!r) return;
+    // Needs the shared dock engine (+ its dock math). If either failed to load, the
+    // rail simply stays hidden — better than a half-wired panel.
+    if (!window.VivPanelDock || !window.VivChatCore) return;
+    var layout = document.querySelector('.viv-layout');
+    var mainEl = layout && layout.querySelector('.viv-main');
+    if (!layout || !mainEl) return;
+    dockCtl = window.VivPanelDock.make({
+      panel: r, layout: layout, mainEl: mainEl, key: 'code',
+      label: 'Code', ghostIcon: CODE_GHOST,
+      launcher: document.getElementById('viv-code-toggle'),
+      resizeHandle: 'viv-code-resize-handle',
+      dragHandles: ['.viv-code-head'],
+      popout: popout,   // pop-out lives IN the dock menu now (no separate header button)
+      defaultDock: 'right', defaultSize: { side: 460, bottom: 320 },
+      onOpen: function () { _syncRailWidth(); _refreshCm(); },
+      onResize: function () { _syncRailWidth(); _refreshCm(); },
+      onDock: function () { _refreshCm(); },
+    });
+    var tog = document.getElementById('viv-code-toggle');
+    if (tog) tog.addEventListener('click', function (ev) {
+      ev.preventDefault();
+      if (dockCtl.didDrag && dockCtl.didDrag()) return;   // a drag-to-dock isn't a toggle click
+      dockCtl.toggle();
+    });
   }
 
   window.ProcessCode = {
@@ -469,6 +571,9 @@
     create: create,
     toggle: toggle,
     collapse: collapse,
+    popout: popout,
+    dockMenu: dockMenu,
+    browseMenu: browseMenu,   // browse/open a Process or Composite from the panel
     save: save,
     revert: revert,
     init: init,
