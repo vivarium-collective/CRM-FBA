@@ -49,37 +49,120 @@
   // the card code's own stated intent: the COMPUTED gate_status verdict wins, then
   // the hand-set confidence, then the lifecycle status. `Blocked` is its own state —
   // a study that could not run — distinct from `Refuted` (a hypothesis disproven).
+  // Two-axis investigation-graph ontology — EXECUTION (what happened) is kept
+  // separate from VERDICT (what the evidence supports); both render as prominent
+  // pills on the card. Replaces the old single _STATUS_META badge that conflated
+  // workflow progress with scientific interpretation ("Accepted"/"Refuted").
+  // The server (investigation_graph_views) derives execution_status for every
+  // node and verdict when authored/derivable; the fallbacks below cover study
+  // objects (e.g. the rail) that don't carry the derived fields.
+  var _EXEC_META = {
+    proposed:  {color: '#94a3b8', icon: '○', label: 'Proposed'},
+    planned:   {color: '#2563eb', icon: '◔', label: 'Planned'},
+    running:   {color: '#ca8a04', icon: '◑', label: 'Running'},
+    completed: {color: '#475569', icon: '●', label: 'Completed'},
+    failed:    {color: '#dc2626', icon: '⊘', label: 'Failed'},
+  };
+  function _execState(s) {
+    s = s || {};
+    var ex = String(s.execution_status || '').trim().toLowerCase();
+    if (_EXEC_META[ex]) return ex;
+    // Client fallback (server normally sets execution_status): derive from the
+    // legacy multi-axis fields. A gate/evaluation that reached a result means the
+    // study RAN — that's `completed`; a negative verdict is NOT a failed execution.
+    var gate = String(s.gate_status || '').trim().toLowerCase();
+    var sim = String(s.simulation_status || '').trim().toLowerCase();
+    var ev = String(s.evaluation_status || '').trim().toLowerCase();
+    var life = String(s.effective_status || s.status || '').trim().toLowerCase();
+    if (sim === 'failed' || life === 'invalid' || life === 'failed') return 'failed';
+    if (['passed', 'failed', 'needs_calibration', 'stale'].indexOf(gate) >= 0) return 'completed';
+    if (sim === 'ran' && (ev === 'evaluated' || ev === 'failed_evaluation')) return 'completed';
+    if (['complete', 'completed', 'ran', 'decided', 'evaluated'].indexOf(life) >= 0) return 'completed';
+    if (sim === 'running' || ['running', 'analyzing', 'in_progress'].indexOf(life) >= 0) return 'running';
+    var conf = String(s.confidence || '').trim().toLowerCase();
+    if (conf === 'accepted') return 'completed';
+    if (conf === 'investigating') return 'running';
+    if (life === 'planned' || conf === 'planned') return s.proposed === true ? 'proposed' : 'planned';
+    if (s.proposed === true) return 'proposed';
+    return 'planned';
+  }
+  function _execMeta(s) { return _EXEC_META[_execState(s)] || _EXEC_META.planned; }
+
+  // Scientific verdict — what the evidence supports, shown only once meaningful.
+  var _VERDICT_META = {
+    'supported':    {color: '#16a34a', icon: '◆', label: 'Supported'},
+    'qualified':    {color: '#0d9488', icon: '◇', label: 'Qualified'},
+    'inconclusive': {color: '#64748b', icon: '◐', label: 'Inconclusive'},
+    'refuted':      {color: '#dc2626', icon: '✗', label: 'Refuted'},
+  };
+  // Legacy verdict values fold into the four canonical ones (ontology decision:
+  // an honest negative is a refuted verdict, mixed is inconclusive).
+  var _VERDICT_ALIASES = {
+    'supported': 'supported', 'qualified': 'qualified',
+    'inconclusive': 'inconclusive', 'refuted': 'refuted',
+    'honest-negative': 'refuted', 'honest_negative': 'refuted', 'mixed': 'inconclusive',
+  };
+  // Shown in the Verdict pill when a study carries no (derivable) verdict yet.
+  var _VERDICT_PENDING = {color: '#94a3b8', icon: '·', label: 'pending'};
+  var _TIER_META = {
+    'conceptual_demonstration': {pips: 1, label: 'demonstration'},
+    'mechanistic_prediction':   {pips: 2, label: 'mechanistic'},
+    'calibrated':               {pips: 3, label: 'calibrated'},
+  };
+  function _studyVerdict(s) {
+    s = s || {};
+    return _VERDICT_ALIASES[String(s.verdict || '').trim().toLowerCase()] || null;
+  }
+  function _verdictMeta(s) {
+    var v = _studyVerdict(s);
+    return v ? _VERDICT_META[v] : null;  // null → render the pending pill
+  }
+  // A rounded two-axis pill: glyph + (optionally) label, tinted by the axis color.
+  function _aigPill(meta, title, cls, compact) {
+    return '<span class="' + cls + '" title="' + title + '" ' +
+      'style="display:inline-flex;align-items:center;gap:3px;font-size:0.6em;font-weight:700;' +
+      'white-space:nowrap;border-radius:9999px;padding:1px 7px;color:' + meta.color + ';' +
+      'background:' + meta.color + '14;border:1px solid ' + meta.color + '40">' +
+      '<span style="font-size:1.1em;line-height:1">' + meta.icon + '</span>' +
+      (compact ? '' : _esc(meta.label)) + '</span>';
+  }
+
+  // Legacy single-axis status model — still used by the rail dot, the sidebar,
+  // and the iset summary table (surfaces outside the investigation graph). The
+  // graph itself now uses the two-axis _EXEC_META × _VERDICT_META above. Kept so
+  // those surfaces render unchanged; a later pass can migrate them too.
   var _STATUS_META = {
-    Accepted:      {color: '#16a34a', icon: '✓', label: 'Accepted'},      // ✓
-    Investigating: {color: '#ca8a04', icon: '◐', label: 'Investigating'}, // ◐
-    Planned:       {color: '#2563eb', icon: '○', label: 'Planned'},       // ○
-    Blocked:       {color: '#64748b', icon: '⊘', label: 'Blocked'},       // ⊘
-    Refuted:       {color: '#dc2626', icon: '✗', label: 'Refuted'},       // ✗
+    Accepted:      {color: '#16a34a', icon: '✓', label: 'Accepted'},
+    Investigating: {color: '#ca8a04', icon: '◐', label: 'Investigating'},
+    Planned:       {color: '#2563eb', icon: '○', label: 'Planned'},
+    Blocked:       {color: '#64748b', icon: '⊘', label: 'Blocked'},
+    Refuted:       {color: '#dc2626', icon: '✗', label: 'Refuted'},
   };
   function _studyStatusState(s) {
     s = s || {};
-    // 1. The COMPUTED gate_status verdict is the top authority.
     var gate = String(s.gate_status || '').trim().toLowerCase();
     if (gate === 'passed' || gate === 'pass' || gate === 'accepted') return 'Accepted';
     if (gate === 'failed' || gate === 'failed_evaluation' || gate === 'refuted') return 'Refuted';
     if (gate === 'blocked') return 'Blocked';
     if (gate === 'partial' || gate === 'needs_calibration' || gate === 'in_progress') return 'Investigating';
-    // 2. A DEFINITIVE lifecycle state (server-computed effective_status/status folds
-    //    gate_status in) outranks the drift-prone hand-set confidence: a `blocked`
-    //    study must never read as its stale `confidence: Investigating`. This is what
-    //    lets the gate-less rail study objects agree with the gate-bearing graph cards.
     var life = String(s.effective_status || s.status || '').trim().toLowerCase();
     if (life.indexOf('blocked') !== -1) return 'Blocked';
     if (life.indexOf('fail') !== -1 || life === 'invalid' || life === 'refuted') return 'Refuted';
-    // 3. Hand-set confidence, when no gate verdict and no definitive lifecycle.
     var conf = String(s.confidence || '').trim();
     if (_STATUS_META[conf]) return conf;
-    // 4. Remaining lifecycle states.
     if (['complete', 'completed', 'ran', 'passed', 'evaluated', 'decided'].indexOf(life) >= 0) return 'Accepted';
     if (['running', 'analyzing', 'in_progress'].indexOf(life) >= 0) return 'Investigating';
     return 'Planned';
   }
   function _studyStatusMeta(s) { return _STATUS_META[_studyStatusState(s)] || _STATUS_META.Planned; }
+  function _studyTier(s) { s = s || {}; return _TIER_META[s.evidence_tier] ? s.evidence_tier : null; }
+  function _tierPipsHtml(s) {
+    var t = _studyTier(s); if (!t) return '';
+    var n = _TIER_META[t].pips, lab = _TIER_META[t].label, out = '';
+    for (var i = 0; i < 3; i++) out += '<span style="color:' + (i < n ? '#334155' : '#cbd5e1') + '">●</span>';
+    return '<span class="aig-tier-pips" title="evidence: ' + lab + '" ' +
+      'style="font-size:0.6em;letter-spacing:1px;margin-left:2px">' + out + '</span>';
+  }
 
   function _humanizeStudyName(slug) {
     var m = /^([a-z]+-\d+[a-z]*)-(.+)$/.exec(slug);
@@ -94,6 +177,16 @@
   // Investigation DAG band state
   // -------------------------------------------------------------------------
   var aigBand = 1;                 // 0=far, 1=mid, 2=near (default = current detail)
+  // Card-width scale — independent of the zoom band. Lets the viewer widen or
+  // narrow the study cards to read the Asks/Finds text as needed. Multiplies the
+  // band's cardW; persisted per viewer in localStorage.
+  var AIG_WIDTH_MIN = 0.7, AIG_WIDTH_MAX = 3.0;
+  var aigWidthScale = (function () {
+    try {
+      var v = parseFloat(localStorage.getItem('aig-width-scale'));
+      return (v >= AIG_WIDTH_MIN && v <= AIG_WIDTH_MAX) ? v : 1;
+    } catch (e) { return 1; }
+  })();
   var _lastDagArgs = null;         // [studies, chainsBySlug] for re-render on band change
 
   // Layer-4 pull-or-compute: per-study cached/compute status for the current
@@ -105,36 +198,99 @@
 
   // -------------------------------------------------------------------------
   // Investigation DAG orientation (LR = left-to-right, TB = top-to-bottom).
-  // Auto-picked per investigation shape (see chooseGraphOrientation in
-  // aig-graph.js) unless the user has manually toggled it, in which case the
-  // choice is persisted per-investigation in localStorage and wins over auto.
   // -------------------------------------------------------------------------
-  function _graphOrientationKey(name) {
-    return 'aig-orientation:' + (name || 'default');
-  }
-  function _getStoredGraphOrientation(name) {
-    try {
-      var v = window.localStorage.getItem(_graphOrientationKey(name));
-      if (v === 'LR' || v === 'TB') return v;
-    } catch (e) { /* private mode / no localStorage */ }
-    return null;
-  }
+  // MODEL: AUTO by default. The orientation ANALYSES THE GRAPH and fits it to the
+  // pane: it lays the graph's dominant axis (breadth vs depth) along the pane's
+  // long axis so the cards fill the space instead of cramming into one line.
+  //   • breadth-heavy graph (a gallery — many cards, ~1 depth):
+  //       wide pane (inline/top/bottom dock) → TB  (cards in a row along the top)
+  //       tall pane (left/right dock)         → LR  (cards in a column)
+  //   • depth-heavy graph (a dependency chain):
+  //       wide pane → LR  (chain flows left→right)
+  //       tall pane → TB  (chain flows top→down)
+  // So the dock side only sets the pane's long axis; the graph shape decides which
+  // axis the cards spread along. (See _aigAutoOrient for the full table.)
+  // Auto is (re)applied on the INITIAL render AND on EVERY dock-position switch —
+  // the dock switch itself IS the "reset to auto", so there is no separate auto
+  // button. The ⇄/⇅ LAYOUT buttons are a TRANSIENT manual override that holds only
+  // within the current dock state (it survives zoom/band re-renders); the next
+  // dock switch clears it and re-autos. The manual choice is in-memory, not
+  // persisted — a reload re-autos too.
+  var _aigManualOrient = null;   // 'LR' | 'TB' manual override for the current dock, else null
+  var _aigUserLayout = false;    // true while a manual override is in effect (drives the toggle UI)
   function _setGraphOrientation(o) {
     if (o !== 'LR' && o !== 'TB') return;
-    try { window.localStorage.setItem(_graphOrientationKey(window._currentIset), o); } catch (e) { /* ignore */ }
+    _aigManualOrient = o;        // transient manual override — holds until the next dock switch
+    _aigUserLayout = true;
     if (_lastDagArgs) _renderInvestigationDag(_lastDagArgs[0], _lastDagArgs[1], _lastDagArgs[2]);
   }
   window._setGraphOrientation = _setGraphOrientation;
+  // Clear the manual override → back to the aspect-derived auto. Called on dock
+  // close (return to inline) and reused by the dock-switch re-auto below.
   function _resetGraphOrientation() {
-    try { window.localStorage.removeItem(_graphOrientationKey(window._currentIset)); } catch (e) { /* ignore */ }
+    _aigManualOrient = null;
+    _aigUserLayout = false;
     if (_lastDagArgs) _renderInvestigationDag(_lastDagArgs[0], _lastDagArgs[1], _lastDagArgs[2]);
   }
   window._resetGraphOrientation = _resetGraphOrientation;
-  // Reflect the active/override state on the toggle control, if present.
+  // A dock-position switch RE-AUTOS the orientation: clear any transient manual
+  // override so the aspect-derived default (computed in the render from the new
+  // dock side) applies. The `o` arg is advisory — the render recomputes from the
+  // live dock aspect — so a stale value can't fight the measured layout.
+  function _setGraphOrientationForDock(o) {
+    _aigManualOrient = null;
+    _aigUserLayout = false;
+    if (_lastDagArgs) _renderInvestigationDag(_lastDagArgs[0], _lastDagArgs[1], _lastDagArgs[2]);
+  }
+  window._setGraphOrientationForDock = _setGraphOrientationForDock;
+  // The aspect-derived AUTO direction for the current placement (dock side when the
+  // graph is hosted in the side panel, else the inline container aspect). Returns
+  // null when nothing can be measured (caller falls back to the shape heuristic).
+  function _aigAutoOrient(depthCounts) {
+    // STEP 1 — the pane's LONG axis: is the available area wide (horizontal) or
+    // tall (vertical)? From the dock side when hosted in the side panel, else the
+    // inline container's measured aspect.
+    var wide = null;
+    var fsEl = document.getElementById('investigation-dag-fs');
+    if (fsEl) {
+      if (fsEl.closest && fsEl.closest('#viv-graph-panel')) {
+        var gp = document.getElementById('viv-graph-panel');
+        var dock = gp && gp.dataset ? gp.dataset.dock : '';
+        if (dock === 'left' || dock === 'right') wide = false;       // narrow side column → tall
+        else if (dock === 'top' || dock === 'bottom') wide = true;   // short band → wide
+      } else {
+        var r = fsEl.getBoundingClientRect();
+        var availW = r.width || fsEl.clientWidth || 0;
+        var availH = Math.max(0, (window.innerHeight || 900) - r.top);
+        if (availW > 1 && availH > 1) wide = availW >= availH;
+      }
+    }
+    if (wide === null) return null;   // unmeasurable → caller falls back to the shape heuristic
+
+    // STEP 2 — the graph's SHAPE: breadth-heavy (gallery-like — many cards at few
+    // depths, i.e. a wide row of independent studies) vs depth-heavy (chain-like —
+    // a long dependency column). `depthCounts` maps depth level → node count.
+    var counts = depthCounts || {};
+    var levels = Object.keys(counts);
+    var maxDepth = levels.length || 1;                  // how DEEP (number of dependency levels)
+    var maxBreadth = 0;                                 // how WIDE (most cards at any one level)
+    levels.forEach(function (d) { var n = counts[d] || 0; if (n > maxBreadth) maxBreadth = n; });
+    var breadthHeavy = maxBreadth > maxDepth;
+
+    // STEP 3 — lay the graph's DOMINANT axis along the pane's LONG axis, so the
+    // cards fill the space instead of cramming into a single line. In this
+    // layout TB spreads same-depth cards HORIZONTALLY (a row) and stacks depth
+    // vertically; LR is the opposite.
+    //   breadth-heavy + wide pane → breadth horizontal → TB  (a row of cards along the top)
+    //   breadth-heavy + tall pane → breadth vertical   → LR  (a column — fits a side dock)
+    //   depth-heavy  + wide pane  → depth horizontal    → LR  (a chain flowing left→right)
+    //   depth-heavy  + tall pane  → depth vertical      → TB  (a chain flowing top→down)
+    return wide ? (breadthHeavy ? 'TB' : 'LR') : (breadthHeavy ? 'LR' : 'TB');
+  }
+  // Reflect the active (LR/TB) state on the toggle control, if present.
   function _syncGraphOrientToggleUI(orient, isOverride) {
     var lrBtn = document.getElementById('aig-orient-lr');
     var tbBtn = document.getElementById('aig-orient-tb');
-    var autoBtn = document.getElementById('aig-orient-auto');
     function _mark(btn, active) {
       if (!btn) return;
       btn.style.background = active ? '#e0e7ff' : 'transparent';
@@ -144,7 +300,6 @@
     }
     _mark(lrBtn, orient === 'LR');
     _mark(tbBtn, orient === 'TB');
-    if (autoBtn) autoBtn.style.visibility = isOverride ? 'visible' : 'hidden';
   }
 
   // -------------------------------------------------------------------------
@@ -391,12 +546,16 @@
         var pr = panel.getBoundingClientRect(), fr = frame.getBoundingClientRect();
         chrome = Math.max(0, Math.round(fr.top - pr.top));   // the embed's own header
       }
-      var h = Math.max(minH || 480, Math.round(window.innerHeight - chrome - 24));
+      // a bottom-docked AI panel takes height from the pane (published as --viv-ai-bottom)
+      var aiBottom = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--viv-ai-bottom')) || 0;
+      var h = Math.max(minH || 480, Math.round(window.innerHeight - chrome - 24 - aiBottom));
       frame.style.height = h + 'px';
     };
     fit();
     if (!frame._fitBound) {
       window.addEventListener('resize', fit);
+      window.addEventListener('viv:ai-layout', fit);      // the AI panel docked/undocked/resized
+      window.addEventListener('viv:panel-layout', fit);   // any dockable panel (chat OR code) changed
       frame._fitBound = true;
     }
   }
@@ -471,7 +630,17 @@
       try {
         var doc = frame.contentDocument;
         if (doc && doc.body && window.ResizeObserver && !frame._roFit) {
-          frame._roFit = new ResizeObserver(function () { fit(true); });
+          // Debounce the refit. A CONTINUOUS container resize — e.g. dragging the
+          // left rail, which reflows the content width every frame — would otherwise
+          // run fit() (a height:0 + scrollHeight measure + scroll-restore, i.e. two
+          // forced iframe reflows) on EVERY frame for EVERY visible embed, which is
+          // what makes the rail drag stutter. Coalesce to one fit ~80ms after the
+          // size settles; late async growth is still covered by the catch-up poll.
+          var _roFitT = 0;
+          frame._roFit = new ResizeObserver(function () {
+            if (_roFitT) clearTimeout(_roFitT);
+            _roFitT = setTimeout(function () { _roFitT = 0; fit(true); }, 80);
+          });
           frame._roFit.observe(doc.body);
           // Observe documentElement too: a tab switch / async chart render can
           // grow the document without changing body's observed box, so a
@@ -758,14 +927,17 @@
   // -------------------------------------------------------------------------
 
   function _switchPage(pageId) {
-    pageId = pageId || 'workspace-inputs';
+    pageId = pageId || 'resources';
+    // Back-compat: the former "Inputs" page (#workspace-inputs) was merged into
+    // the unified "Resources" tab. Old hashes/links resolve to it.
+    if (pageId === 'workspace-inputs') pageId = 'resources';
     // Snapshot mode: redirect authoring-only tabs to the investigations view.
     // composite-explore needs live composite resolution (build_core) which is
     // unavailable in a static bundle → redirect to simulation-setup (composites list).
     if (document.body.classList.contains('snapshot')) {
       // 'github' (Source page) IS available in snapshot now — it's the published
-      // workspace switcher (repo navigator + Sync-to-local). Only 'studies'
-      // (the legacy flat list) redirects to the investigations view.
+      // workspace switcher (repo navigator + Sync-to-local). 'studies' (the legacy
+      // flat list) redirects to the investigations view.
       if (pageId === 'studies') {
         pageId = 'investigations';
       }
@@ -776,6 +948,12 @@
     var link = document.querySelector('.menu-link[data-page="' + pageId + '"]');
     if (page) page.classList.add('active');
     if (link) link.classList.add('active');
+    // The docked investigation-graph panel lives OUTSIDE the .page containers, so a
+    // page switch doesn't hide it — close it whenever we leave the investigation
+    // view so it doesn't linger over Registry / Catalog / Runs / etc.
+    if (pageId !== 'investigations' && window.GraphPanel && window.GraphPanel.close) {
+      try { window.GraphPanel.close(); } catch (e) { /* ignore */ }
+    }
     // Load the faceted Market on switch, and the build_core() registry on
     // Modules / Simulation Setup / Visualizations.
     if (pageId === 'market') {
@@ -790,6 +968,13 @@
     // Analyses page: always refresh from /api/visualization-classes on navigate.
     if (pageId === 'visualizations') {
       _loadAnalysesPage();
+    }
+    // Resources page: one scrolling page — Datasets / References / Expert docs
+    // (/api/inputs) + the structured science sections (/api/structured-resources).
+    // _loadResources fetches the manifest, renders the science gallery, and then
+    // (re)renders the inputs so paper-references fold into the References list.
+    if (pageId === 'resources') {
+      _loadResources();
     }
     // Branch page: render the Source (Scope Local/Remote, repo, branch) section on
     // every navigation, so it's populated from the first visit instead of relying
@@ -835,9 +1020,6 @@
       if (typeof _closeInvestigationDetail === 'function') _closeInvestigationDetail();
       _loadInvestigationSets();
     }
-    if (pageId === 'workspace-inputs') {
-      _loadInputs();
-    }
     if (pageId === 'audit' && typeof window._loadAudit === 'function') {
       _loadAudit();
     }
@@ -851,8 +1033,8 @@
     if (focus) {
       var _snapshot = document.body.classList.contains('snapshot');
       var validPages = _snapshot
-        ? ['workspace-inputs', 'simulation-setup', 'modules', 'market', 'investigations', 'simulations', 'visualizations', 'audit', 'composite-explore', 'github', 'about']
-        : ['workspace-inputs', 'simulation-setup', 'visualizations', 'modules', 'market', 'investigations', 'studies', 'simulations', 'audit', 'composite-explore', 'github', 'about'];
+        ? ['workspace-inputs', 'simulation-setup', 'modules', 'market', 'investigations', 'simulations', 'visualizations', 'resources', 'audit', 'composite-explore', 'github', 'about']
+        : ['workspace-inputs', 'simulation-setup', 'visualizations', 'resources', 'modules', 'market', 'investigations', 'studies', 'simulations', 'audit', 'composite-explore', 'github', 'about'];
       if (validPages.indexOf(focus) >= 0) {
         document.body.classList.add('focus-mode', 'focus-' + focus);
         _switchPage(focus);
@@ -883,9 +1065,11 @@
         var h = (window.location.hash || '').replace(/^#/, '');
         var _snap = document.body.classList.contains('snapshot');
         var validPages = _snap
-          ? ['workspace-inputs', 'modules', 'market', 'simulation-setup', 'investigations', 'simulations', 'visualizations', 'audit', 'composite-explore', 'github', 'about']
-          : ['workspace-inputs', 'modules', 'market', 'simulation-setup', 'visualizations', 'investigations', 'studies', 'simulations', 'audit', 'composite-explore', 'github', 'about'];
-        _switchPage(validPages.indexOf(h) >= 0 ? h : 'workspace-inputs');
+          ? ['workspace-inputs', 'modules', 'market', 'simulation-setup', 'investigations', 'simulations', 'visualizations', 'resources', 'audit', 'composite-explore', 'github', 'about']
+          : ['workspace-inputs', 'modules', 'market', 'simulation-setup', 'visualizations', 'resources', 'investigations', 'studies', 'simulations', 'audit', 'composite-explore', 'github', 'about'];
+        // Default landing view is Studies (the #investigations page) when there's
+        // no (or an unknown) hash.
+        _switchPage(validPages.indexOf(h) >= 0 ? h : 'investigations');
       }
       window.addEventListener('hashchange', fromHash);
       fromHash();
@@ -952,44 +1136,23 @@
   function _loadInputs() {
     var el = document.getElementById('inputs-api-render');
     if (!el) return;
-    el.innerHTML = '<p class="muted" style="font-style:italic">Loading…</p>';
-    // Prefer the Sources-page picker selection over the git-branch-current slug.
-    var _slug = window._inputsSelectedSlug || window._currentIsetSlug || '';
+    el.innerHTML = window.ProgressTrack ? window.ProgressTrack.loadingHtml('Loading resources…') : '<p class="muted" style="font-style:italic">Loading resources…</p>';
+    // One repo-wide resource set: always load the global inputs (no slug). The
+    // server folds every investigation's declared resources into this block.
     var _pInputs = window.DataSource
-      ? window.DataSource.loadInputs(_slug)
-      : (function() {
-          var _url = '/api/inputs' + (_slug ? ('?investigation=' + encodeURIComponent(_slug)) : '');
-          return fetch(_url).then(function(r) { return r.json(); });
-        })();
-    // Also load the investigation list so the panel can offer a picker when no
-    // investigation is branch-current — the user chooses which investigation to
-    // load sources INTO (its own sources, not the repo-wide shared sources).
-    var _pList = (window.DataSource
-      ? window.DataSource.loadIsetList()
-      : apiFetch('GET', '/api/investigation-summaries').then(function(r) { return r.json(); }))
-      .then(function(d) { return (d && d.investigations) || []; })
-      .catch(function() { return []; });
-    Promise.all([_pInputs, _pList])
-      .then(function (arr) {
-        var data = arr[0] || {};
-        data._investigations = arr[1] || [];
-        _renderInputs(el, data);
+      ? window.DataSource.loadInputs('')
+      : fetch('/api/inputs').then(function(r) { return r.json(); });
+    _pInputs
+      .then(function (data) {
+        _renderInputs(el, data || {});
       })
       .catch(function (err) {
-        el.innerHTML = '<p style="color:#c00">Could not load inputs: ' +
+        el.innerHTML = '<p style="color:#c00">Could not load resources: ' +
           _esc(String(err)) +
           ' <button class="action-btn" onclick="_loadInputs()">Retry</button></p>';
       });
   }
   window._loadInputs = _loadInputs;
-
-  // Sources-page investigation picker: set the selected slug and reload so the
-  // panel shows that investigation's sources + investigation-scoped +Add buttons.
-  function _inputsSelectInvestigation(slug) {
-    window._inputsSelectedSlug = slug || '';
-    _loadInputs();
-  }
-  window._inputsSelectInvestigation = _inputsSelectInvestigation;
 
   // A reference entry is either a bare bib key (investigation.references) or a
   // parsed bib-entry dict (global.references). Normalize to a display label.
@@ -1001,6 +1164,36 @@
 
   function _inputsNone() {
     return '<p class="muted" style="font-style:italic;margin:4px 0">none</p>';
+  }
+
+  // "Cited by" chips: one pill per study that cites this resource, linking to
+  // the study page (snapshot-safe via _studyHref). cited_by is
+  // [{slug, title, investigation}], attached server-side by build_inputs from
+  // the studies' `cites:` fields. Returns '' when nothing cites the resource.
+  function _inputsCitedByHtml(citedBy) {
+    if (!citedBy || !citedBy.length) return '';
+    var chips = citedBy.map(function (c) {
+      c = c || {};
+      var slug = c.slug || c.name || '';
+      if (!slug) return '';
+      var label = c.title || c.slug || slug;
+      var href = (typeof _studyHref === 'function')
+        ? _studyHref(slug) : ('/studies/' + encodeURIComponent(slug));
+      // Open IN the workbench (keeps the left menu + SPA chrome) via the shared
+      // study router, exactly like the Studies rail. The real href is kept as a
+      // graceful fallback (middle-click / router missing / no-JS).
+      return '<a href="' + _esc(href) + '" ' +
+        'onclick="if(window._openStudyEmbeddedNewTab){_openStudyEmbeddedNewTab(\'' +
+        _esc(slug) + '\');return false;}" ' +
+        'title="Open study in workbench: ' + _esc(label) + '" ' +
+        'style="display:inline-block;font-size:0.68em;line-height:1.4;padding:0 7px;' +
+        'margin:0 3px 2px 0;border:1px solid #c7d2fe;background:#eef2ff;color:#4338ca;' +
+        'border-radius:9px;text-decoration:none">' + _esc(label) + '</a>';
+    }).join('');
+    if (!chips) return '';
+    return '<div style="margin-top:3px;display:flex;flex-wrap:wrap;align-items:baseline">' +
+      '<span class="muted" style="font-size:0.65em;margin-right:5px;letter-spacing:0.02em;' +
+      'text-transform:uppercase">Cited by</span>' + chips + '</div>';
   }
 
   // A download link to a workspace-relative path.
@@ -1035,7 +1228,7 @@
       var dl = path ? _inputsDownloadLink(path, 'Download') :
         (ds.url ? '<a href="' + _esc(ds.url) + '" target="_blank" rel="noopener" ' +
           'class="action-btn" style="font-size:0.8em;padding:1px 8px;text-decoration:none">↗ Source</a>' : '');
-      return '<tr><td><code>' + name + '</code></td><td><small class="muted">' +
+      return '<tr class="res-item"><td><code>' + name + '</code></td><td><small class="muted">' +
         _esc(src) + '</small></td><td style="text-align:right">' + dl + '</td></tr>';
     }).join('');
     return '<table><thead><tr><th>Name</th><th>Source</th><th></th></tr></thead><tbody>' +
@@ -1048,7 +1241,10 @@
   // references. Unmatched bare keys render as a labeled stub.
   function _inputsRefsHtml(refs) {
     if (!refs || !refs.length) return _inputsNone();
-    return '<div style="display:flex;flex-direction:column;gap:10px">' +
+    // Dense scannable list: thin dividers between rows instead of tall bordered
+    // cards with gaps, so many more references fit per screen.
+    return '<div class="res-reflist" style="display:flex;flex-direction:column;' +
+      'border-top:1px solid #e2e8f0">' +
       refs.map(_inputsRefCardHtml).join('') + '</div>';
   }
 
@@ -1058,7 +1254,7 @@
     var key = ref.key || ref.bib_key || '';
 
     if (ref._unmatched) {
-      return '<div style="border:1px solid #e2e8f0;border-radius:6px;padding:8px 10px">' +
+      return '<div class="res-item" style="border-bottom:1px solid #e2e8f0;padding:5px 2px">' +
         '<code>' + _esc(key || _inputsRefLabel(ref)) + '</code> ' +
         '<small class="muted">(no bib entry)</small></div>';
     }
@@ -1073,16 +1269,16 @@
 
     var titleHtml = link
       ? '<a href="' + _esc(link) + '" target="_blank" rel="noopener" ' +
-        'style="font-weight:600">' + _esc(title) + '</a> ' +
+        'style="font-weight:600;font-size:0.9em">' + _esc(title) + '</a> ' +
         '<small class="muted">↗</small>'
-      : '<strong>' + _esc(title) + '</strong>';
+      : '<strong style="font-size:0.9em">' + _esc(title) + '</strong>';
 
     var metaParts = [];
     if (ref.author) metaParts.push(_esc(ref.author));
     if (ref.year) metaParts.push(_esc(ref.year));
     if (ref.journal) metaParts.push(_esc(ref.journal));
     var meta = metaParts.length
-      ? '<div class="muted" style="font-size:0.85em;margin-top:2px">' +
+      ? '<div class="muted" style="font-size:0.8em;margin-top:1px">' +
         metaParts.join(' · ') + '</div>'
       : '';
 
@@ -1093,8 +1289,8 @@
     var bibBlock = '';
     if (bibtex) {
       var bibId = 'bibtex-' + (key || Math.random().toString(36).slice(2));
-      bibBlock = '<details style="margin-top:6px">' +
-        '<summary style="cursor:pointer;font-size:0.82em;color:#475569">BibTeX</summary>' +
+      bibBlock = '<details style="margin-top:3px">' +
+        '<summary style="cursor:pointer;font-size:0.75em;color:#475569">BibTeX</summary>' +
         // Wrap instead of scroll: a BibTeX entry's `title = {…}` line runs
         // 200-400px past the panel, and overflow:auto turned every reference
         // into its own horizontal scrollbar. Wrapping costs a line and removes
@@ -1110,11 +1306,44 @@
 
     // Show the note as a sub-line only when it isn't already the headline.
     var noteHtml = (ref.note && ref.note !== title)
-      ? '<div class="muted" style="font-size:0.85em;margin-top:2px;font-style:italic">' + _esc(ref.note) + '</div>'
+      ? '<div class="muted" title="' + _esc(ref.note) + '" ' +
+        'style="font-size:0.8em;margin-top:1px;font-style:italic;' +
+        'white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + _esc(ref.note) + '</div>'
       : '';
 
-    return '<div style="border:1px solid #e2e8f0;border-radius:6px;padding:8px 10px">' +
-      '<div>' + titleHtml + actions + '</div>' + meta + noteHtml + bibBlock + '</div>';
+    var citedHtml = _inputsCitedByHtml(ref.cited_by);
+
+    // A structured paper-reference folded in from the vg_data manifest (it is
+    // NOT in papers.bib) — mark it so the provenance is honest, and still show
+    // its bibdata rather than dropping it.
+    var foldFlag = ref._structured
+      ? ' <span class="res-flag res-flag-warn" title="From the structured-resources manifest; not in papers.bib">not in papers.bib</span>'
+      : '';
+
+    // Anchor by bib key so lipid/reaction citation cross-links (_resScrollToRef)
+    // resolve to this References entry.
+    var anchor = key ? ' id="res-ref-' + _esc(String(key)) + '" class="res-item res-ref-anchor"' : ' class="res-item"';
+
+    return '<div' + anchor + ' style="border-bottom:1px solid #e2e8f0;padding:6px 2px">' +
+      '<div style="line-height:1.3">' + titleHtml + foldFlag + actions + '</div>' +
+      meta + noteHtml + bibBlock + citedHtml + '</div>';
+  }
+
+  // Adapt a structured-resources paper-reference entry to the inputs reference
+  // card shape so a manifest paper not in papers.bib can be folded into the
+  // unified References list (inline bibdata) instead of a separate section.
+  function _structuredPaperToRef(p) {
+    p = p || {};
+    return {
+      key: p.bibtex_key || p.id || '',
+      title: p.title || p.name || '',
+      author: p.authors || '',
+      year: p.year || '',
+      journal: p.venue || '',
+      doi: p.doi || '',
+      note: (p.summary && p.summary !== (p.title || p.name)) ? p.summary : '',
+      _structured: true
+    };
   }
 
   // Copy the text content of a <pre> to the clipboard; flash the button label.
@@ -1150,7 +1379,11 @@
         var name = _esc(doc.name || doc.path || '(unnamed)');
         var path = doc.path ? ' <small class="muted">' + _esc(doc.path) + '</small>' : '';
         var dl = doc.path ? ' ' + _inputsDownloadLink(doc.path, 'Download') : '';
-        return '<li><strong>' + name + '</strong>' + path + dl + '</li>';
+        var desc = doc.description
+          ? '<div class="muted" style="font-size:0.85em;margin-top:2px">' +
+            _esc(doc.description) + '</div>'
+          : '';
+        return '<li class="res-item"><strong>' + name + '</strong>' + path + dl + desc + '</li>';
       }).join('') + '</ul>';
   }
 
@@ -1172,11 +1405,10 @@
     reader.readAsDataURL(file);
   }
 
-  // POST an investigation-scoped input upload, then refresh the page.
+  // POST a workspace-wide input upload (no `investigation` → the server writes
+  // to the repo-wide store), then refresh the Resources page.
   function _inputsPost(endpoint, body) {
     body = body || {};
-    var slug = window._inputsSelectedSlug || window._currentIsetSlug || '';
-    if (slug) body.investigation = slug;
     apiFetch('POST', endpoint, body)
       .then(function (r) { return r.json().then(function (d) { return { ok: r.ok, d: d }; }); })
       .then(function (res) {
@@ -1205,11 +1437,9 @@
     inp.click();
   }
 
-  // Entry point for the "+ Add" buttons on the investigation inputs panel.
+  // Entry point for the "+ Add" buttons on the Resources panel. Uploads go to
+  // the repo-wide store (no investigation scope).
   function _inputsAdd(category) {
-    var slug = window._inputsSelectedSlug || window._currentIsetSlug || '';
-    if (!slug) { alert('Select an investigation first (Load sources into: …).'); return; }
-
     if (category === 'dataset') {
       var dsName = window.prompt('Dataset name?');
       if (!dsName) return;
@@ -1270,8 +1500,6 @@
   function _inputsDrop(e) {
     e.preventDefault(); e.stopPropagation();
     _inputsDzHi(e.currentTarget, false);
-    var slug = window._inputsSelectedSlug || window._currentIsetSlug || '';
-    if (!slug) { alert('Select an investigation first (Load sources into: …).'); return; }
     var files = (e.dataTransfer && e.dataTransfer.files)
       ? Array.prototype.slice.call(e.dataTransfer.files) : [];
     files.forEach(_inputsUploadDropped);
@@ -1299,101 +1527,221 @@
   window._inputsDrop = _inputsDrop;
   window._inputsUploadDropped = _inputsUploadDropped;
 
+  // Section header with an inline "+ Add" button and a short caption. One
+  // consistent treatment across References / Datasets / Expert docs so the
+  // unified Resources page reads cleanly.
+  function _inputsSection(title, caption, category, body) {
+    return '<section style="margin:0 0 22px">' +
+      '<div style="display:flex;align-items:baseline;gap:8px;' +
+      'border-bottom:1px solid #e2e8f0;padding-bottom:5px;margin-bottom:10px">' +
+      '<h4 style="margin:0;font-size:1.02em">' + _esc(title) + '</h4>' +
+      _inputsAddBtn(category) +
+      (caption ? '<span class="muted" style="font-size:0.78em;margin-left:auto">' +
+        _esc(caption) + '</span>' : '') +
+      '</div>' + body + '</section>';
+  }
+
   function _renderInputs(el, data) {
-    var inv = data.investigation || {};
-    var glob = data.global || {};
-    var current = data.current || null;
-    // Keep the selected-slug in sync with the investigation actually shown, so
-    // the drop zone + "+ Add" buttons resolve the right target even before the
-    // user touches the "Load sources into" dropdown (data.current reflects the
-    // git branch / last selection). Without this, dropping a file falsely
-    // reported "Select an investigation first".
-    if (current) window._inputsSelectedSlug = current;
+    // One repo-wide resource set. The global block already folds in every
+    // investigation's declared datasets + expert_docs (back-compat, done
+    // server-side in build_inputs), so there is no separate per-investigation
+    // section — everything shows together as workspace resources. Defensively
+    // fall back to the investigation block if an older server returns only that.
+    var glob = data.global || data.investigation || {};
+    // Uploads now target the workspace (repo-wide), not an investigation.
+    window._inputsSelectedSlug = '';
 
-    var invList = data._investigations || [];
+    var refs = (glob.references || []).slice();
+    var datasets = glob.datasets || [];
+    var experts = glob.expert_docs || [];
 
-    var html = '';
-
-    // --- This investigation's inputs (top) ---
-    var invHeading = 'This investigation’s sources';
-    if (current) invHeading += ' — ' + _esc(current);
-    html += '<div class="panel">';
-    html += '<h3>' + invHeading + '</h3>';
-
-    // Investigation picker. One dashboard per repo, but a repo can hold several
-    // investigations and the Sources page isn't always opened from inside one
-    // (git-branch detection may yield no current). Let the user choose which
-    // investigation to view and load sources INTO — its own sources, not the
-    // repo-wide shared sources below.
-    if (invList.length) {
-      var opts = '<option value="">— select an investigation —</option>' +
-        invList.map(function (it) {
-          var slug = it.name || it.slug || '';
-          var label = it.title || slug;
-          var sel = (slug === current) ? ' selected' : '';
-          return '<option value="' + _esc(slug) + '"' + sel + '>' + _esc(label) + '</option>';
-        }).join('');
-      html += '<div style="margin:4px 0 12px;display:flex;align-items:center;gap:6px">' +
-        '<label style="font-size:0.85em;color:#475569">Load sources into:</label>' +
-        '<select onchange="_inputsSelectInvestigation(this.value)" ' +
-        'style="font-size:0.9em;padding:3px 6px;border:1px solid #cbd5e1;border-radius:4px">' +
-        opts + '</select></div>';
+    // Fold the structured manifest's paper-references into this one References
+    // list, deduped by bib key: a paper already in papers.bib keeps its richer
+    // inputs card; one that ISN'T (no matching key) is appended inline so it is
+    // surfaced, not dropped. (Lipid/reaction citation cross-links resolve to
+    // these entries via their res-ref-<key> anchors.)
+    var _foldedPaperKeys = [];
+    var _haveRefKeys = {};
+    refs.forEach(function (r) {
+      var k = (r && (r.key || r.bib_key)) || (typeof r === 'string' ? r : '');
+      if (k) _haveRefKeys[String(k).toLowerCase()] = true;
+    });
+    var _sr = window._resStructured;
+    if (_sr && _sr.references_by_id) {
+      Object.keys(_sr.references_by_id).forEach(function (id) {
+        var p = _sr.references_by_id[id] || {};
+        var key = p.bibtex_key || p.id || id;
+        if (!key || _haveRefKeys[String(key).toLowerCase()]) return;
+        refs.push(_structuredPaperToRef(p));
+        _haveRefKeys[String(key).toLowerCase()] = true;
+        _foldedPaperKeys.push(key);
+      });
     }
+    // Expose the folded (not-in-papers.bib) keys for diagnostics/reporting.
+    window._resFoldedPaperKeys = _foldedPaperKeys;
 
-    if (!current) {
-      html += '<p class="muted" style="font-style:italic">' +
-        (invList.length
-          ? 'Select an investigation above to view and add its sources.'
-          : 'No investigation loaded.') + '</p>';
-    } else {
-      if (inv._repo_fallback) {
-        html += '<p class="muted" style="font-style:italic;font-size:0.85em">' +
-          'migrating: showing repo-level inputs</p>';
-      }
-      // Drag-and-drop upload zone: drop files straight in — no name prompt,
-      // no file picker. Category is inferred from the extension and the name
-      // from the filename (the "+ Add" buttons below remain for manual naming).
-      html += '<div id="inputs-dropzone" ' +
-        'ondragover="_inputsDragOver(event)" ondragleave="_inputsDragLeave(event)" ondrop="_inputsDrop(event)" ' +
-        'style="border:2px dashed #cbd5e1;border-radius:8px;padding:16px 14px;text-align:center;' +
-        'color:#64748b;font-size:0.9em;margin:10px 0 6px;background:#f8fafc;transition:background .12s,border-color .12s">' +
-        '<div style="font-weight:600;color:#475569">⬆ Drag datasets or expert docs here to upload</div>' +
-        '<div style="font-size:0.78em;color:#94a3b8;margin-top:3px">' +
-          'PDFs → references · .md / .txt / .docx → expert docs · everything else → datasets' +
-        '</div></div>';
-      html += '<h4 style="margin:12px 0 4px">Datasets ' +
-        _inputsAddBtn('dataset') + '</h4>' +
-        _inputsDatasetsHtml(inv.datasets);
-      html += '<h4 style="margin:12px 0 4px">References ' +
-        _inputsAddBtn('reference') + '</h4>' +
-        _inputsRefsHtml(inv.references);
-      html += '<h4 style="margin:12px 0 4px">Expert docs ' +
-        _inputsAddBtn('expert') + '</h4>' +
-        _inputsExpertDocsHtml(inv.expert_docs);
-    }
-    html += '</div>';
+    // Counts per formalized resource category, for the tab badges. Structured
+    // data comes from the structured-resources manifest (already loaded into
+    // window._resStructured by _loadResources before this runs).
+    var _rs = window._resStructured;
+    var structAvail = !!(_rs && _rs.type_order && _rs.type_order.length);
+    var structCount = 0;
+    if (structAvail) (_rs.type_order || []).forEach(function (t) {
+      structCount += ((_rs.groups || {})[t] || []).length;
+    });
+    var dsCount = (datasets || []).length;
+    var refCount = (refs || []).length;
+    var expCount = (experts || []).length;
+    var totalCount = dsCount + refCount + expCount + structCount;
 
-    // --- Repo-wide data sources (below) ---
-    html += '<div class="panel">';
-    html += '<h3>Repo-wide data sources</h3>';
-    // Data-source bundle (workspace.yaml dashboard.data_sources provider).
-    // Populated asynchronously; the host is hidden until sources arrive so
-    // workspaces without a provider see no extra UI. Rendered FIRST (above the
-    // shared datasets/references) as the primary repo-wide source.
-    html += '<div id="data-sources-host" style="display:none;margin-bottom:16px"></div>';
-    // Scope the sub-headers so they stay unambiguous when the panel's own
-    // "Repo-wide data sources" heading scrolls off — otherwise a bare "Datasets"
-    // here reads as a twin of the investigation's "Datasets" table above.
-    html += '<h4 style="margin:12px 0 4px">Repo-wide datasets</h4>' +
-      _inputsDatasetsHtml(glob.datasets);
-    html += '<h4 style="margin:12px 0 4px">Repo-wide references</h4>' +
-      _inputsRefsHtml(glob.references);
+    // One segmented tab, matching the study/investigation detail tabs so it fits
+    // the rest of the workbench (same .investigation-detail-tab classes + count
+    // badge). Clicking a tab shows just that category — no scrolling a long page.
+    var _resTabBtn = function (id, label, count) {
+      return '<button type="button" class="investigation-detail-tab res-tab" ' +
+        'data-restab="' + id + '" role="tab" onclick="_resTab(\'' + id + '\')">' +
+        '<span class="tab-label">' + label + '</span>' +
+        (count != null ? '<span class="tab-count-badge">' + count + '</span>' : '') +
+        '</button>';
+    };
+
+    var html = '<div>';
+    html += '<h3 style="margin:0 0 2px">Resources</h3>';
+    html += '<p class="muted" style="font-size:0.85em;margin:0 0 14px">' +
+      'Papers, datasets, expert docs, and structured data for this workspace. Each ' +
+      'reference shows the studies that cite it — click a study to open it.</p>';
+
+    // Drag-and-drop upload zone (live/authoring only; category inferred from the
+    // dropped file's extension). Files land in the workspace-wide store.
+    html += '<div id="inputs-dropzone" class="js-authoring" ' +
+      'ondragover="_inputsDragOver(event)" ondragleave="_inputsDragLeave(event)" ondrop="_inputsDrop(event)" ' +
+      'style="border:2px dashed #cbd5e1;border-radius:8px;padding:16px 14px;text-align:center;' +
+      'color:#64748b;font-size:0.9em;margin:0 0 14px;background:#f8fafc;transition:background .12s,border-color .12s">' +
+      '<div style="font-weight:600;color:#475569">⬆ Drag papers, datasets, or expert docs here to upload</div>' +
+      '<div style="font-size:0.78em;color:#94a3b8;margin-top:3px">' +
+        'PDFs → references · .md / .txt / .docx → expert docs · everything else → datasets' +
+      '</div></div>';
+
+    // Category nav + search. The tabs route to the four formalized categories
+    // (Datasets / References / Expert docs / Structured data), each with a live
+    // count; "All" shows everything. The search box filters across every
+    // category at once, revealing matches wherever they live.
+    html += '<div class="res-controls">' +
+      '<div class="investigation-detail-tabs res-tabs" role="tablist">' +
+        _resTabBtn('all', 'All', totalCount) +
+        _resTabBtn('datasets', 'Datasets', dsCount) +
+        _resTabBtn('references', 'References', refCount) +
+        _resTabBtn('expert', 'Expert docs', expCount) +
+        (structAvail ? _resTabBtn('structured', 'Structured data', structCount) : '') +
+      '</div>' +
+      '<input type="search" id="res-search" class="res-search" placeholder="Search resources…" ' +
+        'oninput="_resSearch(this.value)" aria-label="Search resources">' +
+      '</div>';
+
+    // One pane per category (the structured gallery lives in the sibling
+    // #resources-gallery and is adopted as the "structured" pane below).
+    // Datasets — provider-backed bundle (if any) renders into this host first,
+    // then the declared datasets.
+    var dsBody = '<div id="data-sources-host" style="display:none;margin-bottom:12px"></div>' +
+      _inputsDatasetsHtml(datasets);
+    html += '<div class="investigation-detail-panel res-pane" data-restab="datasets">' +
+      _inputsSection('Datasets', 'data files', 'dataset', dsBody) + '</div>';
+
+    // References (papers) — the richest category, with cited-by study chips and
+    // the folded-in manifest paper-references.
+    html += '<div class="investigation-detail-panel res-pane" data-restab="references">' +
+      _inputsSection('References', 'papers · BibTeX · PDFs', 'reference', _inputsRefsHtml(refs)) + '</div>';
+
+    // Expert docs — source dossiers / background the workspace draws on.
+    html += '<div class="investigation-detail-panel res-pane" data-restab="expert">' +
+      _inputsSection('Expert docs', 'dossiers · notes', 'expert', _inputsExpertDocsHtml(experts)) + '</div>';
+
+    html += '<div id="res-empty" class="muted" style="display:none;font-style:italic;' +
+      'padding:18px 2px">No resources match your search.</div>';
     html += '</div>';
 
     el.innerHTML = html;
 
+    // Adopt the structured science gallery as the "structured" pane, then apply
+    // the active tab (persisted across reloads) and any live search.
+    _resAdoptStructuredPane();
+    _resTab(window._resActiveTab || 'all');
+
     _loadDataSources();
   }
+
+  // Give the sibling structured-science gallery (#resources-gallery) the pane
+  // classes so _resTab / _resSearch treat it as the "Structured data" category.
+  function _resAdoptStructuredPane() {
+    var g = document.getElementById('resources-gallery');
+    if (!g) return;
+    g.classList.add('investigation-detail-panel', 'res-pane');
+    g.setAttribute('data-restab', 'structured');
+  }
+
+  // Switch the visible resource category. 'all' shows every pane; otherwise only
+  // the matching one. Re-applies an active search so a filter survives tab
+  // changes. Mirrors _invDetailTab's active-class toggling.
+  function _resTab(tab) {
+    window._resActiveTab = tab;
+    document.querySelectorAll('.res-tab').forEach(function (b) {
+      b.classList.toggle('active', b.getAttribute('data-restab') === tab);
+    });
+    var search = document.getElementById('res-search');
+    var q = search ? (search.value || '').trim() : '';
+    if (q) { _resSearch(q); return; }  // search owns visibility while active
+    // No active search: undo any search-time per-item hiding, then show the pane(s).
+    document.querySelectorAll('.res-pane .res-item, .res-pane .res-grid > *, .res-pane .res-section')
+      .forEach(function (it) { it.style.display = ''; });
+    document.querySelectorAll('.res-pane').forEach(function (p) {
+      // Explicit display (not just the .active class): the structured pane carries
+      // its own .resources-gallery display rule that would otherwise keep it shown.
+      var show = tab === 'all' || p.getAttribute('data-restab') === tab;
+      p.classList.toggle('active', show);
+      p.style.display = show ? '' : 'none';
+    });
+    var empty = document.getElementById('res-empty');
+    if (empty) empty.style.display = 'none';
+  }
+  window._resTab = _resTab;
+
+  // Filter resource items across every category by substring. While a query is
+  // active, all panes are revealed so matches surface wherever they live; each
+  // item (dataset row / reference card / expert doc / structured card) toggles
+  // on its text, and panes/sections with no match collapse. Clearing restores
+  // the active tab.
+  function _resSearch(q) {
+    q = (q || '').toLowerCase().trim();
+    var panes = Array.prototype.slice.call(document.querySelectorAll('.res-pane'));
+    if (!q) { _resTab(window._resActiveTab || 'all'); return; }
+    var anyMatch = false;
+    panes.forEach(function (p) {
+      p.classList.add('active');  // reveal all panes while searching
+      var structured = p.getAttribute('data-restab') === 'structured';
+      var items = structured
+        ? p.querySelectorAll('.res-grid > *')
+        : p.querySelectorAll('.res-item');
+      var paneMatch = false;
+      Array.prototype.forEach.call(items, function (it) {
+        var hit = (it.textContent || '').toLowerCase().indexOf(q) !== -1;
+        it.style.display = hit ? '' : 'none';
+        if (hit) paneMatch = true;
+      });
+      if (structured) {
+        // Hide a structured sub-section whose cards are all filtered out.
+        p.querySelectorAll('.res-section').forEach(function (sec) {
+          var vis = Array.prototype.slice.call(sec.querySelectorAll('.res-grid > *'))
+            .some(function (c) { return c.style.display !== 'none'; });
+          sec.style.display = vis ? '' : 'none';
+        });
+      }
+      p.style.display = paneMatch ? '' : 'none';
+      if (paneMatch) anyMatch = true;
+    });
+    var empty = document.getElementById('res-empty');
+    if (empty) empty.style.display = anyMatch ? 'none' : 'block';
+  }
+  window._resSearch = _resSearch;
 
   // -------------------------------------------------------------------------
   // Repo-wide data sources — provider-backed bundle (workspace.yaml hook).
@@ -1513,7 +1861,7 @@
     var dlEl = document.getElementById('ds-preview-download');
     if (titleEl) titleEl.textContent = key;
     if (dlEl) dlEl.setAttribute('href', url);
-    if (bodyEl) bodyEl.textContent = 'Loading…';
+    if (bodyEl) bodyEl.innerHTML = window.ProgressTrack ? window.ProgressTrack.loadingHtml() : 'Loading…';
     openModal('modal-ds-preview');
     fetch(url)
       .then(function(r) {
@@ -1910,8 +2258,22 @@
         '<button class="btn-mini tool-open" onclick="_openTool(\'' + id + '\', this)">' +
         'Open &#8599;</button></div>';
     }
+    // Explore → study back-link: a module's targets carry the study they belong
+    // to, so link back to each distinct study's detail page (works live + snapshot
+    // via _studyHref). This is the "reach the study results from Explore" direction.
+    var _seenStudy = {}, _studyLinks = '';
+    items.forEach(function (m) {
+      var s = m && m.study;
+      if (s && !_seenStudy[s]) {
+        _seenStudy[s] = 1;
+        _studyLinks += '<a class="tool-study-link" href="' + _esc(_studyHref(s)) +
+          '" target="_blank" rel="noopener" title="Open this study">&#8592; ' +
+          _esc(m.study_label || s) + '</a>';
+      }
+    });
+    var studies = _studyLinks ? '<div class="tool-studies">' + _studyLinks + '</div>' : '';
     return '<div class="analyses-card tool-card" data-tool="' + id + '">' +
-      head + desc + body + '</div>';
+      head + desc + body + studies + '</div>';
   }
 
   // Open a tool's selected result full-window in a new tab. Per kind:
@@ -1977,6 +2339,519 @@
       });
   }
   window._loadAnalysesPage = _loadAnalysesPage;
+
+  // ── Resources tab ──────────────────────────────────────────────────────────
+  // Curated structured scientific resources (lipid structures, reaction
+  // pathways, paper references, imported engines) read from a workspace's
+  // structured_resources vg_data manifest (GET /api/structured-resources).
+  // Grouped by `type`; every `references: [id]` cross-links to the matching
+  // paper-reference card via an in-page scroll (NOT a #hash, which would trip
+  // the page router). The whole tab — rail link + page — stays hidden unless the
+  // active workspace ships the manifest, so it's purely additive.
+
+  var _RES_TYPE_LABEL = {
+    'lipid-structure':  'Lipid structures',
+    'reaction-pathway': 'Reaction pathways',
+    'evidence-dataset': 'Evidence datasets',
+    'imported-engine':  'Imported engines',
+    'paper-reference':  'Paper references'
+  };
+
+  function _resTypeLabel(t) { return _RES_TYPE_LABEL[t] || String(t || ''); }
+
+  function _resV(v) { return (v === null || v === undefined || v === '') ? '' : String(v); }
+
+  // One compact "label: value" row (short scalars only), omitted when empty.
+  function _resKV(label, value) {
+    var v = _resV(value);
+    if (!v) return '';
+    return '<div class="res-kv"><span class="res-kv-k">' + _esc(label) +
+      '</span><span class="res-kv-v">' + _esc(v) + '</span></div>';
+  }
+
+  // A stacked prose field: label line, then the full-width value beneath. Use
+  // this (not _resKV) for anything that can run long — prose and numeric
+  // summaries — so the value never wraps one character per line in a narrow
+  // grid column. Omitted entirely when the value is empty.
+  function _resField(label, value) {
+    var v = _resV(value);
+    if (!v) return '';
+    return '<div class="res-field"><span class="res-field-k">' + _esc(label) +
+      '</span><span class="res-field-v">' + _esc(v) + '</span></div>';
+  }
+
+  // Scroll to (and briefly flash) a paper-reference card. Used instead of a raw
+  // href="#..." so the SPA hash router doesn't treat the citation jump as a page
+  // switch.
+  function _resScrollToRef(id) {
+    var el = document.getElementById('res-ref-' + id);
+    if (!el) return;
+    try { el.scrollIntoView({ behavior: 'smooth', block: 'center' }); } catch (e) { el.scrollIntoView(); }
+    el.classList.add('res-ref-flash');
+    setTimeout(function () { el.classList.remove('res-ref-flash'); }, 1600);
+  }
+  window._resScrollToRef = _resScrollToRef;
+
+  // Citation chips for a resource's references:[id] list. A known id links to its
+  // card (cross-link); an unknown id renders as a plain muted chip so a dangling
+  // reference is visible rather than silently dropped.
+  function _resRefChips(ids, refsById) {
+    if (!ids || !ids.length) return '';
+    var chips = ids.map(function (id) {
+      var ref = refsById[id];
+      if (ref) {
+        var label = ref.name || ref.bibtex_key || id;
+        return '<a class="res-cite" data-ref="' + _esc(id) +
+          '" onclick="_resScrollToRef(\'' + _esc(String(id)) + '\');return false;" ' +
+          'title="' + _esc(ref.title || label) + '">' + _esc(label) + '</a>';
+      }
+      return '<span class="res-cite res-cite-missing" title="Unresolved reference">' +
+        _esc(id) + '</span>';
+    }).join('');
+    return '<div class="res-cites"><span class="res-cites-lbl">Cites</span>' + chips + '</div>';
+  }
+
+  function _resCardHead(r) {
+    var badge = r.lipid_class || r.pathway || r.engine || '';
+    var abbr = r.abbreviation ? ' <span class="res-abbr">' + _esc(r.abbreviation) + '</span>' : '';
+    return '<div class="res-card-head">' +
+      '<strong class="res-card-name">' + _esc(r.name || r.id || '') + '</strong>' + abbr +
+      (badge ? '<span class="res-badge">' + _esc(badge) + '</span>' : '') +
+      '</div>' +
+      (r.summary ? '<p class="res-summary muted">' + _esc(r.summary) + '</p>' : '');
+  }
+
+  // lipid-structure → identity, chain/headgroup/charge, and the Martini CG mapping.
+  function _resLipidCard(r, refsById) {
+    // Lead with the identity: formula (monospace) + chemical name, so the reader
+    // sees WHAT the molecule is before the detail grid. (class/type is the badge
+    // in the head.) Formula/chemical name are hoisted here, not repeated below.
+    var ident = [];
+    if (r.formula) ident.push('<span class="res-formula">' + _esc(_resV(r.formula)) + '</span>');
+    if (r.chemical_name) ident.push('<span class="res-chemname">' + _esc(_resV(r.chemical_name)) + '</span>');
+    var identLine = ident.length ? '<div class="res-identity">' + ident.join('') + '</div>' : '';
+    var kv = [
+      _resKV('Chains', r.n_chains),
+      _resKV('Chain length', r.chain_length),
+      _resKV('Headgroup', r.headgroup),
+      _resKV('Charge', r.charge_state),
+      _resKV('Role', r.role),
+      _resKV('SMILES', r.smiles)
+    ].join('');
+    // Martini CG mapping: a compact collapsed <details> so its grid + bead list
+    // don't dominate the card; one click reveals the full mapping.
+    var martini = '';
+    var m = r.martini;
+    if (m && typeof m === 'object') {
+      var beads = (m.bead_mapping && m.bead_mapping.length)
+        ? '<ol class="res-beads">' + m.bead_mapping.map(function (b) {
+            return '<li>' + _esc(_resV(b)) + '</li>'; }).join('') + '</ol>'
+        : '';
+      martini = '<details class="res-martini">' +
+        '<summary class="res-sub">Martini coarse-grained mapping</summary>' +
+        '<div class="res-kv-grid">' +
+          _resKV('Version', m.version) + _resKV('Model', m.model) +
+          _resKV('Beads/chain', m.n_beads_per_chain) + _resKV('Source ITP', m.source_itp) +
+        '</div>' + beads + '</details>';
+    }
+    return '<div class="res-card res-lipid">' + _resCardHead(r) + identLine +
+      '<div class="res-kv-grid">' + kv + '</div>' + martini +
+      (r.notes ? '<p class="res-notes">' + _esc(r.notes) + '</p>' : '') + '</div>';
+  }
+
+  // reaction-pathway → network_summary from a generated universe + keystone rules
+  // + PROMINENT verbatim honesty caveats + provenance footer. Optional legacy
+  // `reactions` table rendered when present.
+  function _resPathwayCard(r, refsById) {
+    var head = _resCardHead(r);
+    var role = '';
+    if (r.role_in_campaign || r.campaign_tie) {
+      role = _resField('Role in campaign', r.role_in_campaign) +
+        _resField('Campaign tie', r.campaign_tie);
+    }
+    if (r.description) head += '<p class="res-desc">' + _esc(r.description) + '</p>';
+
+    // network_summary block
+    var net = '';
+    var ns = r.network_summary;
+    if (ns && typeof ns === 'object') {
+      var span = ns.energetic_span_kj_mol || {};
+      var th = ns.thermo || {};
+      var cc = ns.catalyst_classes || {};
+      var headline = [];
+      if (ns.n_reactions != null) headline.push(_resV(ns.n_reactions) + ' reactions');
+      if (ns.n_species != null) headline.push(_resV(ns.n_species) + ' species');
+      if (ns.max_carbons != null) headline.push('C≤' + _resV(ns.max_carbons));
+      // Only render the Rule-family table when there are actual rows — never an
+      // empty table-with-headers shell. Drop rows that carry no family name AND
+      // no count so a populated-but-empty list can't produce a headers-only table.
+      var ruleRows = (ns.rule_families && ns.rule_families.length)
+        ? ns.rule_families.filter(function (f) {
+            return f && (_resV(f.name || f.rule) || _resV(f.n_reactions)); })
+        : [];
+      var families = ruleRows.length
+        ? '<table class="res-table"><thead><tr><th>Rule family</th><th>#rxns</th></tr></thead><tbody>' +
+          ruleRows.map(function (f) {
+            return '<tr><td>' + _esc(_resV(f.name || f.rule)) + '</td><td>' +
+              _esc(_resV(f.n_reactions)) + '</td></tr>'; }).join('') +
+          '</tbody></table>'
+        : '';
+      var spanLine = (span.min != null || span.max != null || span.mean != null)
+        ? _resField('ΔG′ span (kJ/mol)',
+            'min ' + _resV(span.min) + ', max ' + _resV(span.max) + ', mean ' + _resV(span.mean))
+        : '';
+      var catLine = (cc.mineral != null || cc.base != null || cc.none != null)
+        ? _resField('Catalyst classes',
+            'mineral ' + _resV(cc.mineral) + ', base ' + _resV(cc.base) + ', none ' + _resV(cc.none))
+        : '';
+      var thermo = (th.p_h != null || th.ionic_strength_M != null || th.temperature_K != null || th.engine)
+        ? _resField('Thermo conditions',
+            'pH ' + _resV(th.p_h) + ', I ' + _resV(th.ionic_strength_M) + ' M, T ' +
+            _resV(th.temperature_K) + ' K' + (th.engine ? ' (' + _resV(th.engine) + ')' : ''))
+        : '';
+      net = '<div class="res-network"><div class="res-sub">Generated reaction universe</div>' +
+        (headline.length ? '<div class="res-headline">' + _esc(headline.join(' · ')) + '</div>' : '') +
+        spanLine + catLine + thermo +
+        families + '</div>';
+    }
+
+    // keystone_rules table
+    var keystone = '';
+    if (r.keystone_rules && r.keystone_rules.length) {
+      keystone = '<div class="res-sub">Keystone rules</div>' +
+        '<table class="res-table"><thead><tr><th>Rule</th><th>#rxns</th><th>Catalyst</th>' +
+        '<th>Role</th><th>Note</th></tr></thead><tbody>' +
+        r.keystone_rules.map(function (k) {
+          return '<tr><td>' + _esc(_resV(k.rule)) + '</td><td>' + _esc(_resV(k.n_reactions)) +
+            '</td><td>' + _esc(_resV(k.catalyst)) + '</td><td>' + _esc(_resV(k.role)) +
+            '</td><td>' + _esc(_resV(k.note)) + '</td></tr>'; }).join('') +
+        '</tbody></table>';
+    }
+
+    // honesty_notes — rendered PROMINENTLY and VERBATIM as caveats.
+    var caveats = '';
+    if (r.honesty_notes && r.honesty_notes.length) {
+      caveats = '<div class="res-caveats"><div class="res-caveats-lbl">⚠ Caveats</div><ul>' +
+        r.honesty_notes.map(function (n) { return '<li>' + _esc(_resV(n)) + '</li>'; }).join('') +
+        '</ul></div>';
+    }
+
+    // optional legacy curated reactions table
+    var reactions = '';
+    if (r.reactions && r.reactions.length) {
+      reactions = '<div class="res-sub">Curated reactions</div>' +
+        '<table class="res-table"><thead><tr><th>Name</th><th>Equation</th><th>ΔG (kJ/mol)</th>' +
+        '<th>Note</th></tr></thead><tbody>' +
+        r.reactions.map(function (rx) {
+          var dg = (rx.delta_g_kjmol != null)
+            ? _resV(rx.delta_g_kjmol) + (rx.delta_g_type ? ' (' + _esc(rx.delta_g_type) + ')' : '') : '';
+          return '<tr><td>' + _esc(_resV(rx.name)) + '</td><td class="res-eq">' + _esc(_resV(rx.equation)) +
+            '</td><td>' + dg + '</td><td>' + _esc(_resV(rx.note)) + '</td></tr>'; }).join('') +
+        '</tbody></table>';
+    }
+
+    // provenance footer
+    var prov = '';
+    var ds = r.data_source;
+    if (ds && typeof ds === 'object') {
+      var bits = [];
+      if (ds.package) bits.push(_esc(_resV(ds.package)));
+      if (ds.path) bits.push(_esc(_resV(ds.path)));
+      if (ds.generated_by) bits.push('generated by ' + _esc(_resV(ds.generated_by)));
+      if (bits.length) prov = '<div class="res-prov muted">Source: ' + bits.join(' · ') + '</div>';
+    }
+
+    return '<div class="res-card res-pathway">' + head + role + net + keystone +
+      caveats + reactions + prov + '</div>';
+  }
+
+  // imported-engine → engine/wraps/viva_package/role/used_by.
+  function _resEngineCard(r, refsById) {
+    var usedBy = (r.used_by && r.used_by.length)
+      ? '<div class="res-kv"><span class="res-kv-k">Used by</span><span class="res-kv-v">' +
+        r.used_by.map(function (u) { return '<span class="res-tag">' + _esc(_resV(u)) + '</span>'; }).join(' ') +
+        '</span></div>'
+      : '';
+    return '<div class="res-card res-engine">' + _resCardHead(r) +
+      '<div class="res-kv-grid">' +
+        _resKV('Engine', r.engine) + _resKV('Wraps', r.wraps) +
+        _resKV('viva package', r.viva_package) + _resKV('Role', r.role) +
+      '</div>' + usedBy + '</div>';
+  }
+
+  // paper-reference → a citation card, anchored by id so other resources'
+  // Cites chips can cross-link to it.
+  function _resPaperCard(r) {
+    var meta = [];
+    if (r.authors) meta.push(_esc(r.authors));
+    if (r.year) meta.push('(' + _esc(_resV(r.year)) + ')');
+    var line = meta.join(' ');
+    var venue = r.venue ? '<span class="res-venue">' + _esc(r.venue) + '</span>' : '';
+    var links = '';
+    if (r.doi) links += '<a class="res-link" href="https://doi.org/' + encodeURIComponent(r.doi) +
+      '" target="_blank" rel="noopener">doi:' + _esc(r.doi) + '</a>';
+    if (r.url) links += '<a class="res-link" href="' + _esc(r.url) + '" target="_blank" rel="noopener">link</a>';
+    var tags = (r.tags && r.tags.length)
+      ? '<div class="res-tags">' + r.tags.map(function (t) {
+          return '<span class="res-tag">' + _esc(_resV(t)) + '</span>'; }).join('') + '</div>'
+      : '';
+    var flags = '';
+    if (r.in_papers_bib) flags += '<span class="res-flag res-flag-ok">in papers.bib</span>';
+    if (r.needs_verification) flags += '<span class="res-flag res-flag-warn">needs verification</span>';
+    return '<div class="res-card res-paper" id="res-ref-' + _esc(String(r.id || '')) + '">' +
+      '<div class="res-card-head"><strong class="res-card-name">' + _esc(r.name || r.title || r.id || '') +
+      '</strong>' + flags + '</div>' +
+      (line ? '<p class="res-authors">' + line + '</p>' : '') +
+      (r.title ? '<p class="res-title">' + _esc(r.title) + '</p>' : '') +
+      (venue ? '<p>' + venue + '</p>' : '') +
+      (links ? '<div class="res-links">' + links + '</div>' : '') +
+      tags + '</div>';
+  }
+
+  // A study-slug chip that opens the study (feeds_into + model_prediction.study).
+  // Falls back to a plain chip when study navigation isn't available (snapshot).
+  function _resStudyChip(slug) {
+    var s = _resV(slug);
+    if (!s) return '';
+    return '<a class="res-tag res-study-chip" title="Open study ' + _esc(s) + '" ' +
+      'onclick="if(window._openStudyEmbeddedNewTab){_openStudyEmbeddedNewTab(\'' +
+      _esc(String(s)) + '\');}return false;">' + _esc(s) + '</a>';
+  }
+
+  // evidence-dataset → a provenance-chain card: original measurement vs model
+  // prediction (or a "prediction pending" marker), the condition vector, the
+  // caution (verbatim), and provenance/status badges. The whole chain is meant
+  // to read at a glance.
+  function _resEvidenceCard(r, refsById) {
+    // Badges row: provenance_class + status.
+    var badges = '';
+    if (r.provenance_class) {
+      badges += '<span class="res-ev-badge res-ev-prov" data-prov="' +
+        _esc(_resV(r.provenance_class)) + '">' + _esc(_resV(r.provenance_class)) + '</span>';
+    }
+    if (r.status) {
+      badges += '<span class="res-ev-badge res-ev-status" data-status="' +
+        _esc(_resV(r.status)) + '">' + _esc(_resV(r.status)) + '</span>';
+    }
+    var head = '<div class="res-card-head">' +
+      '<strong class="res-card-name">' + _esc(r.name || r.id || '') + '</strong>' +
+      (badges ? '<span class="res-ev-badges">' + badges + '</span>' : '') +
+      '</div>' +
+      (r.summary ? '<p class="res-summary muted">' + _esc(r.summary) + '</p>' : '');
+
+    // Citation line: bibtex_key + DOI link.
+    var cite = '';
+    var c = r.citation;
+    if (c && typeof c === 'object' && (c.bibtex_key || c.doi)) {
+      var parts = [];
+      if (c.bibtex_key) parts.push('<span class="res-ev-bibkey">' + _esc(_resV(c.bibtex_key)) + '</span>');
+      if (c.doi) parts.push('<a class="res-link" href="https://doi.org/' + encodeURIComponent(c.doi) +
+        '" target="_blank" rel="noopener">doi:' + _esc(c.doi) + '</a>');
+      cite = '<div class="res-ev-cite">' + parts.join(' · ') + '</div>';
+    }
+
+    // Provenance chain: original measurement vs model prediction (or pending).
+    var om = r.original_measurement;
+    var measBody = '';
+    if (om && typeof om === 'object') {
+      var val = _resV(om.value);
+      if (val !== '' && om.units) val += ' ' + _resV(om.units);
+      measBody =
+        _resKV('Quantity', om.quantity) +
+        (val !== '' ? _resKV('Value', val) : '') +
+        _resKV('Normalized', om.value_normalized) +
+        _resKV('Uncertainty / detection', om.uncertainty_or_detection_limit);
+    }
+    var measCol = '<div class="res-ev-col res-ev-measured"><div class="res-sub">Original measurement</div>' +
+      (measBody ? '<div class="res-kv-grid res-ev-kv">' + measBody + '</div>'
+                : '<p class="res-ev-none muted">—</p>') + '</div>';
+
+    var mp = r.model_prediction;
+    var predCol;
+    if (mp && typeof mp === 'object' && _resV(mp.status).toLowerCase() === 'pending') {
+      predCol = '<div class="res-ev-col res-ev-predicted res-ev-pending">' +
+        '<div class="res-sub">Model prediction</div>' +
+        '<div class="res-ev-pending-mark">⏳ prediction pending</div></div>';
+    } else if (mp && typeof mp === 'object' && (mp.study || mp.output || mp.value != null)) {
+      var pval = _resV(mp.value);
+      if (pval !== '' && mp.units) pval += ' ' + _resV(mp.units);
+      var studyLine = mp.study
+        ? '<div class="res-kv"><span class="res-kv-k">Study</span><span class="res-kv-v">' +
+          _resStudyChip(mp.study) + '</span></div>'
+        : '';
+      predCol = '<div class="res-ev-col res-ev-predicted"><div class="res-sub">Model prediction</div>' +
+        '<div class="res-kv-grid res-ev-kv">' +
+          studyLine + _resKV('Output', mp.output) +
+          (pval !== '' ? _resKV('Value', pval) : '') +
+        '</div></div>';
+    } else {
+      predCol = '<div class="res-ev-col res-ev-predicted"><div class="res-sub">Model prediction</div>' +
+        '<p class="res-ev-none muted">—</p></div>';
+    }
+    var chain = '<div class="res-ev-chain">' + measCol + predCol + '</div>';
+
+    // Condition vector — compact key:value row, null/empty keys skipped.
+    var cond = '';
+    var cv = r.condition_vector;
+    if (cv && typeof cv === 'object') {
+      var CV_LABELS = {
+        pH: 'pH', T: 'T', P: 'P', ionic_strength: 'ionic strength',
+        mineral_comp: 'mineral', concentrations: 'conc.'
+      };
+      var bits = Object.keys(cv).map(function (k) {
+        var v = cv[k];
+        if (v === null || v === undefined || v === '') return '';
+        if (typeof v === 'object') { try { v = JSON.stringify(v); } catch (e) { v = String(v); } }
+        var lbl = CV_LABELS[k] || k;
+        return '<span class="res-ev-cvpair"><span class="res-ev-cvk">' + _esc(lbl) +
+          '</span>' + _esc(_resV(v)) + '</span>';
+      }).filter(Boolean).join('');
+      if (bits) cond = '<div class="res-ev-cond"><span class="res-sub">Condition vector</span>' +
+        '<div class="res-ev-cvrow">' + bits + '</div></div>';
+    }
+
+    // Species chips.
+    var species = (r.species && r.species.length)
+      ? '<div class="res-kv"><span class="res-kv-k">Species</span><span class="res-kv-v">' +
+        r.species.map(function (s) { return '<span class="res-tag res-ev-species">' + _esc(_resV(s)) + '</span>'; }).join(' ') +
+        '</span></div>'
+      : '';
+
+    // Secondary provenance metadata.
+    var metaKv = [
+      species,
+      _resKV('Source fig/table', r.source_figure_table),
+      _resKV('Control arm', r.control_arm),
+      _resKV('Digitization', r.digitization_provenance),
+      _resKV('License / access', r.license_access)
+    ].join('');
+    // source_asset_link: render DOI/URL as a link, otherwise plain text.
+    var asset = '';
+    if (r.source_asset_link) {
+      var sal = _resV(r.source_asset_link);
+      var href = /^(https?:)?\/\//.test(sal) ? sal
+        : (/^10\.\d/.test(sal) ? 'https://doi.org/' + sal : '');
+      asset = href
+        ? '<div class="res-kv"><span class="res-kv-k">Source asset</span><span class="res-kv-v">' +
+          '<a class="res-link" href="' + _esc(href) + '" target="_blank" rel="noopener">' + _esc(sal) + '</a></span></div>'
+        : _resKV('Source asset', sal);
+    }
+    var meta = (metaKv + asset)
+      ? '<div class="res-kv-grid res-ev-meta">' + metaKv + asset + '</div>' : '';
+
+    // feeds_into study chips.
+    var feeds = (r.feeds_into && r.feeds_into.length)
+      ? '<div class="res-ev-feeds"><span class="res-cites-lbl">Feeds into</span>' +
+        r.feeds_into.map(function (s) { return _resStudyChip(s); }).join('') + '</div>'
+      : '';
+
+    // caution — rendered PROMINENTLY and VERBATIM (like honesty_notes).
+    var caution = r.caution
+      ? '<div class="res-caveats res-ev-caution"><div class="res-caveats-lbl">⚠ Caution</div>' +
+        '<p class="res-ev-caution-text">' + _esc(_resV(r.caution)) + '</p></div>'
+      : '';
+
+    return '<div class="res-card res-evidence">' + head + cite + chain + cond + meta +
+      feeds + caution + _resRefChips(r.references, refsById) + '</div>';
+  }
+
+  // Generic fallback for an unknown resource type — never drop it silently.
+  function _resGenericCard(r, refsById) {
+    var kv = Object.keys(r).filter(function (k) {
+      return ['id', 'type', 'name', 'summary', 'references'].indexOf(k) < 0 &&
+        (typeof r[k] === 'string' || typeof r[k] === 'number');
+    }).map(function (k) { return _resKV(k, r[k]); }).join('');
+    return '<div class="res-card res-generic">' + _resCardHead(r) +
+      '<div class="res-kv-grid">' + kv + '</div>' +
+      _resRefChips(r.references, refsById) + '</div>';
+  }
+
+  function _resRenderCard(r, refsById) {
+    switch (r.type) {
+      case 'lipid-structure':  return _resLipidCard(r, refsById);
+      case 'reaction-pathway': return _resPathwayCard(r, refsById);
+      case 'evidence-dataset': return _resEvidenceCard(r, refsById);
+      case 'imported-engine':  return _resEngineCard(r, refsById);
+      case 'paper-reference':  return _resPaperCard(r);
+      default:                 return _resGenericCard(r, refsById);
+    }
+  }
+
+  function _resRenderPage(container, data) {
+    var order = data.type_order || [];
+    var groups = data.groups || {};
+    var refsById = data.references_by_id || {};
+    // No big "Resources" title here — the page already leads with one (from the
+    // inputs block above). Keep only the manifest description as a slim lead.
+    var header = (data.description)
+      ? '<div class="res-manifest-head"><p class="res-manifest-desc muted">' +
+        _esc(data.description) + '</p></div>'
+      : '';
+    // The evidence-dataset group carries a one-time QA-rule banner, rendered
+    // ONCE above its cards (never per-card).
+    var qaRule = _resV(data.evidence_dataset_qa_rule);
+    var sections = order.map(function (t) {
+      var items = groups[t] || [];
+      if (!items.length) return '';
+      var cards = items.map(function (r) { return _resRenderCard(r, refsById); }).join('');
+      var banner = (t === 'evidence-dataset' && qaRule)
+        ? '<div class="res-ev-qa-banner"><span class="res-ev-qa-lbl">QA rule</span>' +
+          '<span class="res-ev-qa-text">' + _esc(qaRule) + '</span></div>'
+        : '';
+      return '<section class="res-section" data-res-type="' + _esc(t) + '">' +
+        '<h3 class="res-section-title">' + _esc(_resTypeLabel(t)) +
+        ' <span class="res-count">' + items.length + '</span></h3>' +
+        banner +
+        '<div class="res-grid">' + cards + '</div></section>';
+    }).join('');
+    container.innerHTML = header + sections;
+  }
+
+  // The last-loaded structured-resources manifest, so _renderInputs can fold the
+  // manifest's paper-references into the unified References list (and resolve the
+  // lipid/reaction citation cross-links). null when the workspace ships none.
+  window._resStructured = null;
+
+  // Load the structured manifest, render the science gallery (lipid / reaction /
+  // evidence — paper-references and imported-engines are excluded server-side),
+  // then (re)render the inputs so paper-references fold into References. Always
+  // renders the inputs, manifest or not.
+  function _loadResources() {
+    var container = document.getElementById('resources-gallery');
+    var _base = _analysesBase();
+    var _url = _analysesSnapshot()
+      ? _base + '/api/structured-resources.json'
+      : '/api/structured-resources';
+    fetch(_url)
+      .then(function (r) { return r.text(); })
+      .then(function (t) {
+        var data = {};
+        try { data = t ? JSON.parse(t) : {}; } catch (e) { data = {}; }
+        return data;
+      })
+      .then(function (data) {
+        data = data || {};
+        var hasManifest = !!(data.available);
+        window._resStructured = hasManifest ? data : null;
+        if (container) {
+          if (hasManifest && data.type_order && data.type_order.length) {
+            _resRenderPage(container, data);
+          } else {
+            container.innerHTML = '';  // no science sections; inputs still render
+          }
+        }
+      })
+      .catch(function () {
+        window._resStructured = null;
+        if (container) container.innerHTML = '';
+      })
+      .then(function () {
+        // Render (or re-render) the inputs with whatever manifest we resolved so
+        // the References fold is consistent, regardless of fetch outcome.
+        if (typeof _loadInputs === 'function') _loadInputs();
+      });
+  }
+  window._loadResources = _loadResources;
 
   // Source-rank for picker sort: in_workspace classes are the ones the user
   // can act on directly (they live in this workspace's package or an
@@ -2092,7 +2967,10 @@
     if (v === null || v === undefined) return '';
     if (typeof v === 'string') return v;
     if (typeof v === 'object') {
-      if (v._type) return String(v._type);
+      // Show the physical unit beside the type ("float · volt") so a port /
+      // config param reads with its units, not a bare "float". _units is the
+      // schema metadata the processes declare.
+      if (v._type) return v._units ? String(v._type) + ' · ' + String(v._units) : String(v._type);
       var keys = Object.keys(v).filter(function (k) { return k.charAt(0) !== '_'; });
       if (keys.length) return '{' + keys.slice(0, 4).join(', ') + (keys.length > 4 ? ', …' : '') + '}';
       return 'store';
@@ -2474,7 +3352,7 @@
         ' title="Double-click to zoom in on this ' + (p.kind || 'process') + '">' +
       '<div class="reg-card-row">' +
         '<div class="reg-card-main">' +
-          '<div class="reg-card-head"><strong class="reg-card-name">' + esc(p.name) + '</strong>' + _procKindBadge(p.kind) + _procBridgeBadge(p) + defaultBadge + _regUseBadge(p) + '</div>' +
+          '<div class="reg-card-head"><strong class="reg-card-name">' + esc(p.name) + '</strong>' + _procKindBadge(p.kind) + _procBridgeBadge(p) + defaultBadge + _regUseBadge(p) + _contractBadge(p.contract_audit) + '</div>' +
           '<code class="reg-card-addr">' + addr + '</code>' +
           (short ? '<p class="reg-card-desc">' + esc(short) + '</p>' : '') +
         '</div>' +
@@ -2512,7 +3390,7 @@
       }).join('');
     }
     var bodyHead =
-      '<div class="loom-body-head"><span class="loom-name">' + _esc(p.name) + '</span>' + _procKindBadge(kind) + _regUseBadge(p) + '</div>' +
+      '<div class="loom-body-head"><span class="loom-name">' + _esc(p.name) + '</span>' + _procKindBadge(kind) + _regUseBadge(p) + _contractBadge(p.contract_audit) + '</div>' +
       '<code class="loom-addr">' + _esc(p.address || kind) + '</code>' +
       (desc ? '<p class="loom-desc">' + _esc(desc) + '</p>' : '');
 
@@ -2572,48 +3450,62 @@
     } else { window.prompt('Copy this link:', url); }
   }
   window._shareCompositeFromHeader = _shareCompositeFromHeader;
-  function _toggleCompositeJson(btn) {
+  // _toggleCompositeJson / _copyCompositeJson now live in composite-card.js
+  // (loaded before this file) so the "{ } JSON" button works on every page the
+  // card mounts on, including the Study Detail Model tab. Bare references below
+  // resolve to those globals.
+  // Contract-audit panel toggle — mirrors _toggleCompositeJson. The REAL
+  // composite audit is expensive (it builds the composite's core), so it's
+  // fetched lazily on first open from /api/composite-contract-audit and the
+  // header badge is back-patched with the real status once it lands.
+  function _toggleCompositeContract(btn) {
     var card = btn.closest('.registry-entry-full'); if (!card) return;
-    var panel = card.querySelector('[data-role="composite-json"]'); if (!panel) return;
+    var panel = card.querySelector('[data-role="composite-contract"]'); if (!panel) return;
     var show = panel.hidden;
     panel.hidden = !show;
     btn.classList.toggle('active', show);
     if (!show || panel._loaded) return;
     panel._loaded = true;
     var id = card.getAttribute('data-address');
-    var body = panel.querySelector('.pcard-json-body');
-    if (body) body.innerHTML = '<span class="muted" style="font-size:0.85em">Resolving composite JSON…</span>';
-    var url = (typeof _compositeStateUrl === 'function')
-      ? _compositeStateUrl(id)
-      : '/api/composite-resolve?id=' + encodeURIComponent(id);
-    fetch(url).then(function (r) { return r.json(); }).then(function (j) {
-      var doc = (j && j.state) ? j.state : j;
-      if (body) {
-        body.innerHTML =
-          '<div class="pcard-json-toolbar">' +
-            '<button class="btn-mini" type="button" onclick="_copyCompositeJson(this)">⧉ Copy</button>' +
-            '<a class="btn-mini" href="' + _esc(url) + '" target="_blank" rel="noopener">Raw ↗</a>' +
-          '</div>' +
-          (typeof _jsonViewer === 'function' ? _jsonViewer(doc) : '<pre>' + _esc(JSON.stringify(doc, null, 2)) + '</pre>') +
-          '<pre class="pcard-json-raw" hidden>' + _esc(JSON.stringify(doc, null, 2)) + '</pre>';
-      }
-      panel._json = doc;
-    }).catch(function (e) {
-      if (body) body.innerHTML = '<span class="loom-run-err">Failed to load JSON: ' + _esc(String(e)) + '</span>';
-      panel._loaded = false;
-    });
+    var body = panel.querySelector('.pcard-contract-body');
+    if (body) body.innerHTML = '<span class="muted" style="font-size:0.85em">Auditing composite contracts… (building the core)</span>';
+    fetch('/api/composite-contract-audit?id=' + encodeURIComponent(id))
+      .then(function (r) { return r.json(); })
+      .then(function (a) {
+        if (body) {
+          body.innerHTML = (typeof _compositeContractPanelBody === 'function')
+            ? _compositeContractPanelBody(a)
+            : '<pre>' + _esc(JSON.stringify(a, null, 2)) + '</pre>';
+        }
+        panel._audit = a;
+        // Back-patch the header badge so the at-a-glance status is now real,
+        // not the coreless "contract n/a" stub.
+        try {
+          var badge = card.querySelector('.contract-badge');
+          if (badge && a && a.status && typeof _contractBadge === 'function') {
+            var tmp = document.createElement('div');
+            tmp.innerHTML = _contractBadge(a);
+            if (tmp.firstChild) badge.replaceWith(tmp.firstChild);
+          }
+        } catch (e) { /* badge back-patch is best-effort */ }
+      })
+      .catch(function (e) {
+        if (body) body.innerHTML = '<span class="loom-run-err">Audit failed: ' + _esc(String(e)) + '</span>';
+        panel._loaded = false;
+      });
   }
-  window._toggleCompositeJson = _toggleCompositeJson;
-  function _copyCompositeJson(btn) {
-    var panel = btn.closest('[data-role="composite-json"]');
-    var pre = panel && panel.querySelector('.pcard-json-raw');
-    if (!pre) return;
-    var txt = pre.textContent || '';
-    var done = function () { var o = btn.textContent; btn.textContent = '✓ Copied'; setTimeout(function () { btn.textContent = o; }, 1200); };
-    if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(txt).then(done).catch(done);
-    else done();
+  window._toggleCompositeContract = _toggleCompositeContract;
+  // Process-card contract toggle — the per-process audit is already inline on
+  // the card (pre-rendered into the panel), so this just reveals it. No fetch,
+  // no badge back-patch (the header badge is already the real status).
+  function _toggleProcessContract(btn) {
+    var card = btn.closest('.registry-entry-full'); if (!card) return;
+    var panel = card.querySelector('[data-role="process-contract"]'); if (!panel) return;
+    var show = panel.hidden;
+    panel.hidden = !show;
+    btn.classList.toggle('active', show);
   }
-  window._copyCompositeJson = _copyCompositeJson;
+  window._toggleProcessContract = _toggleProcessContract;
 
   // In a ?popcard= window: strip the shell to just the single requested card.
   function _enterPopcardMode(address, kind) {
@@ -2790,9 +3682,10 @@
       '<div class="loom-card loom-card-stack loom-card-' + kind + '">' +
         '<div class="pcard-top">' +
           '<div class="pcard-header pcard-title" onclick="_pinCardTop(this)" title="Click to pin to top">' +
-            '<span class="loom-name">' + _esc(p.name) + '</span>' + kindBadge + _regUseBadge(p) +
+            '<span class="loom-name">' + _esc(p.name) + '</span>' + kindBadge + _regUseBadge(p) + _contractBadge(p.contract_audit) +
             '<code class="loom-addr">' + _esc(p.address || kind) + '</code>' +
             (/^(process|step)$/.test(kind) ? _processCodeBtn(p.address) : '') +
+            (p.contract_audit ? _processContractBtn() : '') +
             _cardPopoutBtn(p.address || kind, kind) +
           '</div>' +
           '<div class="pcard-summary">' +
@@ -2802,6 +3695,14 @@
               (desc ? '<p class="loom-desc pcard-desc-clamp" onclick="_pcardToggleDesc(this)" title="Click to expand / collapse">' + _esc(desc) + '</p>' : '') +
             '</div>' +
           '</div>' +
+          // Contract-audit panel — hidden until the header "§ Contract" button
+          // toggles it (mirrors the composite card). The per-process audit is
+          // already inline on the card, so it's pre-rendered here, not fetched.
+          (p.contract_audit
+            ? '<div class="pcard-json-view pcard-contract-view" data-role="process-contract" hidden>' +
+                '<div class="pcard-contract-body">' + _contractPanelBody(p.contract_audit) + '</div>' +
+              '</div>'
+            : '') +
         '</div>' +
         '<div class="pcard-acc">' +
           section('configure', 'Configure', '<span class="pcard-sec-count">' + nCfg + '</span><span class="pcard-config-chips" data-role="config-chips" hidden></span>', configBody, { resizable: true }) +
@@ -2951,6 +3852,11 @@
         if (status) { status.textContent = '✗ ' + msg; status.classList.add('pcard-apply-err'); }
         if (host) host.innerHTML = '<div class="loom-run-err" style="padding:10px">✗ ' + _esc(String(msg)) + '</div>';
         return;   // do NOT reload the loom — it would show a stale/default graph
+      }
+      // Update the card's "· N processes" meta from the re-resolved bigraph —
+      // if the applied config structurally changed the process set, it reflects it.
+      if (j.state && window._setCompositeProcCount && window._countCompositeProcs) {
+        try { window._setCompositeProcCount(card, window._countCompositeProcs(j.state)); } catch (e) {}
       }
       if (embed) {
         embed._overrides = JSON.stringify(cfg);
@@ -3618,11 +4524,43 @@
         if (j && j.ok) {
           card._lastOutputs = j.outputs;
           if (typeof _ensureOutputsOpen === 'function') _ensureOutputsOpen(card);
-          var dl = card.querySelector('.pcard-dl'); if (dl) { dl.disabled = false; dl.title = 'Download outputs (JSON)'; }
-          out.innerHTML = '<div class="loom-run-ok">✓ ran — outputs' +
-            '<button class="btn-mini loom-copy-btn" onclick="_copyRunOutput(this)" title="Copy outputs JSON">⧉ Copy</button></div>' +
-            _jsonViewer(j.outputs) +
-            '<pre class="loom-run-raw" hidden>' + _esc(JSON.stringify(j.outputs, null, 2)) + '</pre>';
+          // Distinguish a run that produced actual VALUES from one that returned
+          // only structure. A single isolated update() on the default empty
+          // state is common for multi-entity processes: they return a delta
+          // keyed per agent/cell/field entry, so with zero agents/cells the
+          // output is a "shell" like {agents:{}} / {cells:{}} / {fields:{}} —
+          // ok:true, non-empty at the top level, but with no leaf data. A bare
+          // Object.keys()==0 check misses those shells, so walk for any leaf: a
+          // scalar (incl. 0 / false / "") is data; an empty container is not.
+          var _hasData = function (v) {
+            if (v === null || v === undefined) return false;
+            if (Array.isArray(v)) return v.some(_hasData);
+            if (typeof v === 'object') return Object.keys(v).some(function (k) { return _hasData(v[k]); });
+            return true;
+          };
+          var _o = j.outputs;
+          if (!_hasData(_o)) {
+            // Shell (e.g. {agents:{}}) vs literal {}/null/[] — show the shell's
+            // structure in a collapsible so the user sees WHAT came back empty.
+            var _literalEmpty = (_o === null || _o === undefined) ||
+              (Array.isArray(_o) ? _o.length === 0 :
+                (typeof _o === 'object' ? Object.keys(_o).length === 0 : false));
+            var _rawDetails = _literalEmpty ? '' :
+              '<details style="margin-top:4px"><summary style="cursor:pointer">raw output</summary>' +
+              '<pre style="font-size:0.8em;white-space:pre-wrap;margin:4px 0 0">' +
+              _esc(JSON.stringify(_o, null, 2)) + '</pre></details>';
+            out.innerHTML = '<div class="loom-run-ok">✓ ran — no data produced</div>' +
+              '<div class="muted" style="font-size:0.85em;margin-top:4px">The process ran but returned no values. ' +
+              'Many processes emit a delta keyed per agent/cell/field entry, so a single run on the default empty ' +
+              'state has nothing to populate — seed state (agents, a sized field) in Configure, or run it inside ' +
+              'its composite. This is expected, not an error.' + _rawDetails + '</div>';
+          } else {
+            var dl = card.querySelector('.pcard-dl'); if (dl) { dl.disabled = false; dl.title = 'Download outputs (JSON)'; }
+            out.innerHTML = '<div class="loom-run-ok">✓ ran — outputs' +
+              '<button class="btn-mini loom-copy-btn" onclick="_copyRunOutput(this)" title="Copy outputs JSON">⧉ Copy</button></div>' +
+              _jsonViewer(j.outputs) +
+              '<pre class="loom-run-raw" hidden>' + _esc(JSON.stringify(j.outputs, null, 2)) + '</pre>';
+          }
         } else {
           var stage = (j && j.stage) ? '[' + j.stage + '] ' : '';
           out.innerHTML = '<div class="loom-run-err">✗ ' + _esc(stage) + _esc((j && j.error) || 'run failed') + '</div>' +
@@ -3637,37 +4575,9 @@
   window._runRegistryProcess = _runRegistryProcess;
 
   // Copy the run output's JSON to the clipboard.
-  // Collapsible JSON viewer — objects/arrays are <details> nodes (top two
-  // levels open); scalars are typed leaves. Big/nested run outputs stay
-  // navigable instead of a wall of pretty-printed text.
-  function _jsonNode(key, val, depth) {
-    var keyHtml = (key !== null) ? '<span class="jt-key">' + _esc(key) + '</span><span class="jt-colon">:</span> ' : '';
-    if (val === null) return '<div class="jt-row">' + keyHtml + '<span class="jt-null">null</span></div>';
-    if (Array.isArray(val)) {
-      if (!val.length) return '<div class="jt-row">' + keyHtml + '<span class="jt-punct">[ ]</span></div>';
-      var ob = depth < 2 ? ' open' : '';
-      var ab = val.map(function (v, i) { return _jsonNode(String(i), v, depth + 1); }).join('');
-      return '<details class="jt-branch"' + ob + '><summary>' + keyHtml +
-        '<span class="jt-punct">[</span><span class="jt-count">' + val.length + '</span><span class="jt-punct">]</span></summary>' +
-        '<div class="jt-children">' + ab + '</div></details>';
-    }
-    if (typeof val === 'object') {
-      var keys = Object.keys(val);
-      if (!keys.length) return '<div class="jt-row">' + keyHtml + '<span class="jt-punct">{ }</span></div>';
-      var oo = depth < 2 ? ' open' : '';
-      var ob2 = keys.map(function (k) { return _jsonNode(k, val[k], depth + 1); }).join('');
-      return '<details class="jt-branch"' + oo + '><summary>' + keyHtml +
-        '<span class="jt-punct">{</span><span class="jt-count">' + keys.length + '</span><span class="jt-punct">}</span></summary>' +
-        '<div class="jt-children">' + ob2 + '</div></details>';
-    }
-    var t = typeof val;
-    var cls = t === 'number' ? 'jt-num' : (t === 'boolean' ? 'jt-bool' : 'jt-str');
-    var disp = t === 'string' ? '"' + _esc(val) + '"' : _esc(String(val));
-    return '<div class="jt-row">' + keyHtml + '<span class="' + cls + '">' + disp + '</span></div>';
-  }
-  function _jsonViewer(value) {
-    return '<div class="json-viewer">' + _jsonNode(null, value, 0) + '</div>';
-  }
+  // _jsonNode / _jsonViewer (the collapsible JSON viewer) now live in
+  // composite-card.js (loaded before this file); _jsonViewer is exported as a
+  // global, so bare references here keep resolving.
 
   function _copyRunOutput(btn) {
     var out = btn.closest('.loom-run-output');
@@ -4066,6 +4976,62 @@
   }
   window._setRegistryTab = _setRegistryTab;
 
+  // <find-candidates>
+  // Registry "Find candidates" panel: enter a face, list registered processes
+  // that fit it via POST /api/find-candidates. The renderer is pure.
+  function _renderCandidateList(result) {
+    var r = result || {};
+    var note = function (t) { return '<div class="fc-note fc-muted">' + t + '</div>'; };
+    if (r.status === 'unavailable') return note('contract matching unavailable');
+    if (r.status === 'error') return note('Error: ' + _esc(r.error || 'request failed'));
+    var cands = Array.isArray(r.candidates) ? r.candidates : [];
+    if (!cands.length) return note('no matching processes');
+    return '<ul class="fc-list">' + cands.map(function (c) {
+      var full = c.match === 'full';
+      var tag = '<span class="fc-tag ' + (full ? 'fc-full' : 'fc-near') + '">' +
+        (full ? 'full' : 'near-miss') + '</span>';
+      var fails = (!full && Array.isArray(c.fails) && c.fails.length)
+        ? '<ul class="fc-fails">' + c.fails.map(function (f) {
+            return '<li><code>' + _esc(f && f.condition) + '</code> ' + _esc(f && f.reason) + '</li>';
+          }).join('') + '</ul>'
+        : '';
+      return '<li class="fc-item"><code class="fc-addr">' + _esc(c.address) + '</code> ' + tag + fails + '</li>';
+    }).join('') + '</ul>';
+  }
+  window._renderCandidateList = _renderCandidateList;
+
+  function _parsePortSpec(text) {
+    var out = {};
+    String(text || '').split(',').forEach(function (tok) {
+      tok = tok.trim();
+      if (!tok) return;
+      var i = tok.indexOf(':');
+      if (i < 0) out[tok] = 'any';
+      else out[tok.slice(0, i).trim()] = tok.slice(i + 1).trim() || 'any';
+    });
+    return out;
+  }
+
+  function _findCandidates() {
+    var inEl = document.getElementById('fc-inputs');
+    var outEl = document.getElementById('fc-outputs');
+    var res = document.getElementById('fc-results');
+    if (!res) return;
+    res.innerHTML = '<div class="fc-note fc-muted">Searching&hellip;</div>';
+    var body = { inputs: _parsePortSpec(inEl && inEl.value), outputs: _parsePortSpec(outEl && outEl.value) };
+    try {
+      apiFetch('POST', '/api/find-candidates', body)
+        .then(function (r) { return r.json(); })
+        .then(function (j) { res.innerHTML = _renderCandidateList(j); })
+        .catch(function (e) { res.innerHTML = _renderCandidateList({ status: 'error', error: String(e && e.message || e) }); });
+    } catch (e) {
+      res.innerHTML = _renderCandidateList({ status: 'error', error: String(e && e.message || e) });
+    }
+  }
+  window._findCandidates = _findCandidates;
+  // </find-candidates>
+
+
   // Context-aware "+ New" buttons for the active sub-tab. Only process/step and
   // composite/generator are authorable from here (emitters/viz/types/tests are
   // framework- or discovery-defined).
@@ -4123,19 +5089,26 @@
   }
 
   // Composite ordering for the Sort control. Composites carry study info under
-  // `studies` (an object with .studies/.success_pct) and `workspace_local`
-  // instead of a process's `study_participation`/`source`, and have no
-  // Temporal/Step kind or use-count — so they get their own comparator.
+  // `studies` (an object with .studies/.success_pct) instead of a process's
+  // `study_participation`, and have no Temporal/Step kind or use-count — so they
+  // get their own comparator.
+  //
+  // Workspace-vs-imported: `workspace_local` is unreliable (the API reports it
+  // False even for a workspace's own composite), so editable-vs-imported is read
+  // off `read_only` (imported modules are read-only) — with workspace_local as an
+  // OR fallback. "Most used" ranks by study count (ecoli_baseline, with the most
+  // studies, floats to the top) rather than merely keeping workspace entries first.
   function _compositeSortCmp(a, b, key) {
     function studies(c) { return ((c.study_participation || c.studies || {}).studies) || 0; }
     function succ(c) { var s = (c.study_participation || c.studies || {}).success_pct; return s == null ? -1 : s; }
+    function wsRank(c) { return ((c.workspace_local === true) || (c.read_only === false)) ? 0 : 1; }
     var byName = String(a.name || '').localeCompare(String(b.name || ''));
-    var wsFirst = (a.workspace_local ? 0 : 1) - (b.workspace_local ? 0 : 1);
+    var wsFirst = wsRank(a) - wsRank(b);   // workspace/editable composites before imported
     if (key === 'name') return byName;
-    if (key === 'studies') return (studies(b) - studies(a)) || byName;
-    if (key === 'success') return (succ(b) - succ(a)) || byName;
+    if (key === 'studies') return (studies(b) - studies(a)) || wsFirst || byName;
+    if (key === 'success') return (succ(b) - succ(a)) || wsFirst || byName;
     if (key === 'source') return wsFirst || byName;
-    return wsFirst || byName;   // 'use' (default) / 'kind' — keep workspace-first, then name
+    return (studies(b) - studies(a)) || wsFirst || byName;   // 'use' (default) — most-referenced (by studies) first
   }
 
   function _registryEntryMatches(p) {
@@ -5191,7 +6164,7 @@
     if (window._marketLoading) return;
     window._marketLoading = true;
     var host = document.getElementById('market-results');
-    if (host) host.innerHTML = '<p class="empty-state">Loading&hellip;</p>';
+    if (host) host.innerHTML = window.ProgressTrack ? window.ProgressTrack.loadingHtml() : '<p class="empty-state">Loading&hellip;</p>';
     window._marketByType = { composite: [], study: [], investigation: [], process: [] };
     window._marketItems = [];
     var rebuild = function () {
@@ -5924,7 +6897,7 @@
     });
     if (!repos.length) {
       var loaded = (window._marketItems && window._marketItems.length) || (window._marketCatalog && window._marketCatalog.length);
-      return loaded ? '<p class="empty-state">No repositories match.</p>' : '<p class="empty-state">Loading&hellip;</p>';
+      return loaded ? '<p class="empty-state">No repositories match.</p>' : (window.ProgressTrack ? window.ProgressTrack.loadingHtml() : '<p class="empty-state">Loading&hellip;</p>');
     }
     if (zoom === 'list') return _marketRepoTable(repos);
     var render = zoom === 'detail' ? _marketRepoDetail : _marketRepoCard;
@@ -6033,7 +7006,7 @@
     // within-category order (e.g. processes by use). So "All" reads as grouped.
     filtered.sort(function (a, b) { return _MARKET_CAT_ORDER[_marketCatOf(a)] - _MARKET_CAT_ORDER[_marketCatOf(b)]; });
     if (!filtered.length) {
-      host.innerHTML = items.length ? '<p class="empty-state">No matches.</p>' : '<p class="empty-state">Loading&hellip;</p>';
+      host.innerHTML = items.length ? '<p class="empty-state">No matches.</p>' : (window.ProgressTrack ? window.ProgressTrack.loadingHtml() : '<p class="empty-state">Loading&hellip;</p>');
       return;
     }
     var html = '';
@@ -6860,7 +7833,20 @@
     // no duplicate call needed here.
 
     // Populate the Investigations rail section (V4).
-    _vivRefreshInvestigationsRail();
+    var _railReady = _vivRefreshInvestigationsRail();
+
+    // Item 70 phase 3: dismiss the post-switch splash (index.html.j2's
+    // inline body script), if it was shown, the instant the rail's real
+    // fetch resolves — the first real post-reload content, not a fabricated
+    // timer. No-op on a normal load (the splash element never exists).
+    var _splash = document.getElementById('viv-switch-splash');
+    if (_splash) {
+      (function (splash, ready) {
+        var dismiss = function () { if (splash.parentNode) splash.parentNode.removeChild(splash); };
+        if (ready && typeof ready.then === 'function') ready.then(dismiss).catch(dismiss);
+        else dismiss();
+      })(_splash, _railReady);
+    }
 
     // (The GitHub Branches tab has been removed.)
   });
@@ -6878,26 +7864,42 @@
   }
 
   function _vivToggleRail() {
+    // The rail is permanently collapsed (icon bar); toggling is a no-op so no
+    // stray caller can expand it back out.
     var rail = document.getElementById('viv-rail');
-    if (!rail) return;
-    var collapsed = rail.classList.toggle('viv-rail-collapsed');
-    _vivSyncRailToggleLabel(collapsed);
-    try { localStorage.setItem('vivarium.rail-collapsed', collapsed ? '1' : '0'); } catch (e) {}
+    if (rail) rail.classList.add('viv-rail-collapsed');
   }
   window._vivToggleRail = _vivToggleRail;
 
-  function _vivRestoreRailState() {
-    var stored = null;
-    try { stored = localStorage.getItem('vivarium.rail-collapsed'); } catch (e) {}
-    var collapsed = stored === '1';
-    var rail = document.getElementById('viv-rail');
-    if (rail) {
-      // Apply the saved expanded width (the collapsed rule overrides it via
-      // higher CSS specificity, so this is safe even when collapsed).
-      _vivRailApplyWidth(rail, _vivRailSavedWidth());
-      if (collapsed) rail.classList.add('viv-rail-collapsed');
+  // Reveal / hide the study-search field (the header magnifier). `force` true/false
+  // sets it explicitly (Escape closes); otherwise it toggles. Closing clears the
+  // filter so the full list returns.
+  function _vivToggleRailSearch(force) {
+    var head = document.getElementById('viv-rail-studies-head');
+    var input = document.getElementById('viv-rail-study-search');
+    var btn = document.getElementById('viv-rail-search-btn');
+    if (!head || !input) return;
+    var show = (typeof force === 'boolean') ? force : head.hasAttribute('hidden');
+    if (show) {
+      head.removeAttribute('hidden');
+      if (btn) btn.classList.add('viv-rail-search-active');
+      input.focus();
+      input.select();
+    } else {
+      head.setAttribute('hidden', '');
+      if (btn) btn.classList.remove('viv-rail-search-active');
+      if (input.value) { input.value = ''; if (window._filterRailStudies) window._filterRailStudies(''); }
     }
-    _vivSyncRailToggleLabel(collapsed);
+  }
+  window._vivToggleRailSearch = _vivToggleRailSearch;
+
+  function _vivRestoreRailState() {
+    // The rail is now PERMANENTLY collapsed — a fixed icon bar. The expand/resize
+    // mechanism (drag handle + width restore) was removed, so always keep the
+    // collapsed class regardless of any stored width/choice from older builds.
+    var rail = document.getElementById('viv-rail');
+    if (rail) rail.classList.add('viv-rail-collapsed');
+    _vivSyncRailToggleLabel(true);
   }
   window._vivRestoreRailState = _vivRestoreRailState;
 
@@ -6920,29 +7922,69 @@
     rail.style.setProperty('--rail-w', w + 'px');
   }
   function _vivRailResizeStart(ev) {
+    if (ev.button !== undefined && ev.button !== 0) return;   // left button only
     ev.preventDefault();
     var rail = document.getElementById('viv-rail');
     if (!rail) return;
+    // CAPTURE the pointer on the handle so the drag keeps tracking (and ENDS on
+    // release) even while the pointer is over an iframe — the study porthole and
+    // native-viz iframes otherwise swallow the mousemove/mouseup, which left the
+    // rail "following the mouse after you let go" and unable to widen.
+    var handle = (ev.currentTarget && ev.currentTarget.setPointerCapture)
+      ? ev.currentTarget : document.getElementById('viv-rail-resize-handle');
+    var pointerId = (ev.pointerId != null) ? ev.pointerId : null;
+    try { if (handle && handle.setPointerCapture && pointerId != null) handle.setPointerCapture(pointerId); } catch (e) { /* unsupported */ }
     rail.classList.add('viv-rail-resizing');
     document.body.classList.add('viv-rail-resizing-active');
     var railLeft = rail.getBoundingClientRect().left;
     var lastW = _vivRailSavedWidth();
 
+    // mousemove fires far faster than the display refreshes; writing --rail-w on
+    // every event forces a synchronous reflow of the whole rail each time, which on
+    // a workspace with a large study list (e.g. sms-ecoli) makes the drag stutter.
+    // Coalesce to at most ONE style write per animation frame: mousemove only records
+    // the target state (cheap), and rAF applies it. lastW is tracked synchronously so
+    // the saved width on mouse-up is always the latest pointer position.
+    var _raf = 0, _pending = null;
+    function _flush() {
+      _raf = 0;
+      if (!_pending) return;
+      if (_pending.collapsed) { rail.classList.add('viv-rail-collapsed'); }
+      else { rail.classList.remove('viv-rail-collapsed'); _vivRailApplyWidth(rail, _pending.w); }
+    }
     function _move(e) {
       var raw = e.clientX - railLeft;         // desired width: left edge → pointer
-      if (raw < _RAIL_COLLAPSE_AT) {          // snap into the collapsed bar look
-        rail.classList.add('viv-rail-collapsed');
-        return;
+      // HYSTERESIS so the rail doesn't flicker at the threshold and has no dead
+      // zone: when collapsed, keep it collapsed until the pointer is pulled clearly
+      // OUT (past EXPAND_ABOVE); when expanded, keep it expanded until pushed
+      // clearly IN (below COLLAPSE_BELOW). The gap between the two is a stable hold
+      // band, so small jitter near the edge never toggles the state.
+      var EXPAND_ABOVE = 150, COLLAPSE_BELOW = 110;
+      var curCollapsed = rail.classList.contains('viv-rail-collapsed');
+      var collapsed = curCollapsed ? (raw < EXPAND_ABOVE) : (raw < COLLAPSE_BELOW);
+      if (collapsed) {
+        _pending = { collapsed: true };
+      } else {
+        var w = Math.min(_RAIL_MAX, Math.max(_RAIL_MIN, raw));
+        if (Math.abs(w - _RAIL_NORMAL) <= _RAIL_SNAP) w = _RAIL_NORMAL;  // snap to normal
+        lastW = w;
+        _pending = { collapsed: false, w: w };
       }
-      rail.classList.remove('viv-rail-collapsed');
-      var w = Math.min(_RAIL_MAX, Math.max(_RAIL_MIN, raw));
-      if (Math.abs(w - _RAIL_NORMAL) <= _RAIL_SNAP) w = _RAIL_NORMAL;  // snap to normal
-      lastW = w;
-      _vivRailApplyWidth(rail, w);
+      if (!_raf) _raf = requestAnimationFrame(_flush);
     }
+    var _ended = false;
     function _up() {
-      document.removeEventListener('mousemove', _move);
+      if (_ended) return; _ended = true;
+      if (handle) {
+        handle.removeEventListener('pointermove', _move);
+        handle.removeEventListener('pointerup', _up);
+        handle.removeEventListener('pointercancel', _up);
+        try { if (handle.releasePointerCapture && pointerId != null) handle.releasePointerCapture(pointerId); } catch (e) { /* ignore */ }
+      }
+      document.removeEventListener('mousemove', _move);   // legacy fallback, if bound
       document.removeEventListener('mouseup', _up);
+      if (_raf) { cancelAnimationFrame(_raf); _raf = 0; }
+      _flush();                               // apply the final pointer position now
       rail.classList.remove('viv-rail-resizing');
       document.body.classList.remove('viv-rail-resizing-active');
       var collapsed = rail.classList.contains('viv-rail-collapsed');
@@ -6952,8 +7994,16 @@
       } catch (e) { /* private mode */ }
       if (typeof _vivSyncRailToggleLabel === 'function') _vivSyncRailToggleLabel(collapsed);
     }
-    document.addEventListener('mousemove', _move);
-    document.addEventListener('mouseup', _up);
+    // Prefer pointer events on the captured handle; fall back to document mouse
+    // events if pointer capture is unavailable.
+    if (handle && handle.setPointerCapture && pointerId != null) {
+      handle.addEventListener('pointermove', _move);
+      handle.addEventListener('pointerup', _up);
+      handle.addEventListener('pointercancel', _up);
+    } else {
+      document.addEventListener('mousemove', _move);
+      document.addEventListener('mouseup', _up);
+    }
   }
   window._vivRailResizeStart = _vivRailResizeStart;
 
@@ -6993,7 +8043,10 @@
           : apiFetch('GET', '/api/investigation-summaries').then(function(r) { return r.json(); })
         ).catch(function() { return {investigations: []}; })
       : Promise.resolve({investigations: []});
-    Promise.all([p1, p2]).then(function(arr) {
+    // Returned (item 70 phase 3): this is the first real post-page-load
+    // fetch to settle, so the post-switch splash dismiss hook (below, in the
+    // DOMContentLoaded handler) can wait on it instead of a timer.
+    return Promise.all([p1, p2]).then(function(arr) {
       window._investigations = arr[0].investigations || [];
       window._isetIndex      = arr[1].investigations || [];
       if (hasIsetUI && window._isetIndex.length) {
@@ -7028,10 +8081,15 @@
         }
       }
       if (!match) {
-        host.innerHTML =
-          '<p class="viv-rail-empty" style="font-size:0.85em;color:#9ca3af;padding:4px 12px">' +
-          'Loading study…' +
-          '</p>';
+        if (window.ProgressTrack) {
+          window.ProgressTrack.loading(host, 'Loading study…');
+          host.firstElementChild.classList.add('viv-loading-compact');
+        } else {
+          host.innerHTML =
+            '<p class="viv-rail-empty" style="font-size:0.85em;color:#9ca3af;padding:4px 12px">' +
+            'Loading study…' +
+            '</p>';
+        }
         return;
       }
       var topic = (match.topic && match.topic.trim()) ? match.topic.trim() : 'Ungrouped';
@@ -7106,7 +8164,13 @@
     if (!headerEl) return;
     var group = headerEl.closest ? headerEl.closest('.viv-rail-investigations-group')
                                  : headerEl.parentNode;
-    if (group) group.classList.toggle('collapsed');
+    if (!group) return;
+    group.classList.toggle('collapsed');
+    // Persist the user's choice so it survives the next rail re-render (opening a
+    // study, a data refresh, a pin toggle, …) instead of snapping back to the
+    // active-only default.
+    var _iset = group.getAttribute('data-iset');
+    if (_iset) _saveInvExpanded(_iset, !group.classList.contains('collapsed'));
   }
   window._vivToggleInvGroup = _vivToggleInvGroup;
 
@@ -7142,6 +8206,25 @@
     var mru = _loadInvMru();
     mru[name] = new Date().getTime();
     try { window.localStorage.setItem('viv.invMru', JSON.stringify(mru)); } catch (e) { /* private mode */ }
+  }
+  // Per-investigation rail expand/collapse state, persisted so a group the user
+  // opened (or collapsed) STAYS that way across rail re-renders — navigating to
+  // a study no longer re-collapses the other open investigations. Map is
+  // {invName: true(open)|false(collapsed)}; absent = use the default (the active
+  // investigation opens, the rest stay collapsed).
+  function _loadInvExpanded() {
+    if (!window._invExpanded || typeof window._invExpanded !== 'object') {
+      try { window._invExpanded = JSON.parse(window.localStorage.getItem('viv.invExpanded') || '{}') || {}; }
+      catch (e) { window._invExpanded = {}; }
+      if (!window._invExpanded || typeof window._invExpanded !== 'object') window._invExpanded = {};
+    }
+    return window._invExpanded;
+  }
+  function _saveInvExpanded(name, open) {
+    if (!name || name === '__ungrouped__') return;
+    var m = _loadInvExpanded();
+    m[name] = !!open;
+    try { window.localStorage.setItem('viv.invExpanded', JSON.stringify(m)); } catch (e) { /* private mode */ }
   }
   function _loadPinnedInvestigations() {
     if (!Array.isArray(window._pinnedInvestigations)) {
@@ -7554,7 +8637,7 @@
     var ids = Array.from(window._ceCompareSet);
     if (ids.length < 2) return;
     var body = document.getElementById('ce-compare-body');
-    body.innerHTML = '<p class="empty-state">Loading&hellip;</p>';
+    body.innerHTML = window.ProgressTrack ? window.ProgressTrack.loadingHtml() : '<p class="empty-state">Loading&hellip;</p>';
     Promise.all(ids.map(function(id) {
       return apiFetch('GET', '/api/composite-run/' + encodeURIComponent(id))
         .then(function(r) { return r.json(); });
@@ -7900,7 +8983,7 @@
   function _legacyLoadCompositeSvg(ref) {
     var el = document.getElementById('composite-explore-svg-legacy');
     if (!el) return;
-    el.innerHTML = '<p style="color:#888">Loading SVG…</p>';
+    el.innerHTML = window.ProgressTrack ? window.ProgressTrack.loadingHtml('Loading SVG…') : '<p style="color:#888">Loading SVG…</p>';
     apiFetch('GET', '/api/composite-resolve?id=' + encodeURIComponent(ref))
       .then(function(r) { return r.json(); })
       .then(function(data) {
@@ -8278,9 +9361,48 @@
   window._isetIndex = [];        // [{name, title, status, studies:[slug, ...]}]
   window._currentIset = null;    // name of the iset currently open in detail view
 
+  // ── Shared, identity-memoized indexes over the workspace's studies/isets ──
+  // Membership resolution used to be an Array.find per member slug inside render
+  // loops → O(N^2) on large workspaces (sms-ecoli). These maps make it O(1); they
+  // rebuild only when the underlying array is REPLACED (a data (re)load swaps the
+  // reference), so no load-site wiring is needed. Same idiom the rail uses.
+  var _sbnCache = null, _sbnSrc;
+  function _studyByName() {
+    var src = window._investigations || [];
+    if (src !== _sbnSrc) {
+      _sbnSrc = src; _sbnCache = {};
+      src.forEach(function(s) { if (s && s.name) _sbnCache[s.name] = s; });
+    }
+    return _sbnCache;
+  }
+  var _ibnCache = null, _ibnSrc;
+  function _isetByName() {
+    var src = window._isetIndex || [];
+    if (src !== _ibnSrc) {
+      _ibnSrc = src; _ibnCache = {};
+      src.forEach(function(i) { if (i && i.name) _ibnCache[i.name] = i; });
+    }
+    return _ibnCache;
+  }
+  var _ifsCache = null, _ifsSrc;
+  function _investigationForStudyMap() {
+    var src = window._isetIndex || [];
+    if (src !== _ifsSrc) {
+      _ifsSrc = src; _ifsCache = {};
+      // First iset wins (a study can belong to several; matches the old .find order).
+      src.forEach(function(iset) {
+        (iset.studies || []).forEach(function(slug) { if (!(slug in _ifsCache)) _ifsCache[slug] = iset.name; });
+      });
+    }
+    return _ifsCache;
+  }
+
   function _loadInvestigationSets() {
     var list = document.getElementById('investigations-list');
-    if (list) list.innerHTML = '<p class="empty-state">Loading…</p>';
+    if (list) {
+      if (window.ProgressTrack) window.ProgressTrack.loading(list);
+      else list.innerHTML = '<p class="empty-state">Loading…</p>';
+    }
     var _p = window.DataSource
       ? window.DataSource.loadIsetList()
       : fetch('/api/investigation-summaries', {headers: {Accept: 'application/json'}})
@@ -8617,11 +9739,9 @@
 
   // Member study objects for an investigation (from the client studies index).
   function _isetStudyObjs(iset) {
+    var byName = _studyByName();   // O(1) per slug (was Array.find → O(N) per slug)
     return ((iset && iset.studies) || [])
-      .map(function(slug) {
-        return (window._investigations || []).find(function(s) { return s.name === slug; })
-          || { name: slug };
-      });
+      .map(function(slug) { return byName[slug] || { name: slug }; });
   }
 
   function _setIsetSort(value) {
@@ -8708,45 +9828,209 @@
   }
   window._setInvestigationContextCollapsed = _setInvestigationContextCollapsed;
 
-  // Study-tabs manager: accumulating, closeable study tabs inside the
-  // investigation workspace (#ws-study-tabs bar -> #ws-study-panel/#ws-study-frame
-  // porthole). Opening a study collapses the investigation context down to the
-  // slim bar; closing the last open tab returns to graph-only.
-  window._wsStudyTabs = { investigation: null, openTabs: [], active: null };
+  // Embedded study view: a SINGLE study opens inline in the investigation
+  // workspace porthole (#ws-study-panel/#ws-study-frame) — opening another study
+  // REPLACES it. The old accumulating, closeable study-tab strip (#ws-study-tabs
+  // with × chips) was removed; `_wsStudyTabs` is now just {investigation, active}
+  // so `active` still drives the open-node highlight in the graph.
+  window._wsStudyTabs = { investigation: null, active: null };
 
   function _wsResetStudyTabs(investigation) {
-    window._wsStudyTabs = { investigation: investigation, openTabs: [], active: null };
-    _wsRenderStudyTabs();
+    window._wsStudyTabs = { investigation: investigation, active: null };
+    window._aigSelected = null;   // fresh investigation -> clear any selection
+    _wsHighlightActiveDagNode(null);
+    _aigStudyActive = false;   // no study open -> let the pane fill the screen again
     var panel = document.getElementById('ws-study-panel');
     if (panel) panel.style.display = 'none';
+    // No study open -> restore the inline investigation view, un-float the graph,
+    // hide the graph-bar navigator, and land GRAPH-PROMINENT: the prose collapsed
+    // behind the "▸ Investigation overview" toggle (so ⛶ "back to graph" shows the
+    // graph on top, not a wall of prose).
+    _setInvProseForStudy(false);
+    _aigExitDock();
+    _applyInvOverviewState();
+    _renderGraphBarNav();
     _setInvestigationContextCollapsed(false);   // fresh investigation -> graph expanded
+    try { _applyAigZoom(); _aigAutoFillInline(); } catch (e) { /* ignore */ }  // restore full-height pane
   }
   window._wsResetStudyTabs = _wsResetStudyTabs;
 
-  function _wsRenderStudyTabs() {
-    var bar = document.getElementById('ws-study-tabs');
-    if (!bar) return;
-    var st = window._wsStudyTabs;
-    if (!st.openTabs.length) { bar.style.display = 'none'; bar.innerHTML = ''; return; }
-    bar.style.display = '';
-    bar.innerHTML = st.openTabs.map(function (slug) {
-      var on = slug === st.active;
-      return '<span class="ws-study-tab" data-ws-tab="' + _esc(slug) + '" ' +
-        'style="display:inline-flex;align-items:center;gap:6px;padding:6px 10px;cursor:pointer;' +
-        'border-bottom:2px solid ' + (on ? '#3b82f6' : 'transparent') + ';' +
-        'color:' + (on ? '#0f172a' : '#64748b') + ';font-weight:' + (on ? '600' : '400') + ';margin-bottom:-1px">' +
-        '<span onclick="_wsOpenStudyTab(\'' + _esc(slug) + '\')">' + _esc(slug) + '</span>' +
-        '<span onclick="event.stopPropagation();_wsCloseStudyTab(\'' + _esc(slug) + '\')" ' +
-        'title="close" style="color:#94a3b8;font-weight:700">×</span></span>';
-    }).join('');
+  // Highlight the open study's node in the investigation graph (clearing any
+  // previously-open one), matching on the slug stamped on each node by
+  // _renderInvestigationDag. Called on every tab change AND re-applied after a
+  // graph re-render so the highlight survives. Node slug === the tab slug (both
+  // are s.name, the study slug the open handlers take).
+  function _wsHighlightActiveDagNode(slug) {
+    try {
+      var nodes = document.querySelectorAll('.iset-dag-node[data-study]');
+      for (var i = 0; i < nodes.length; i++) {
+        nodes[i].classList.toggle(
+          'aig-node-active', !!slug && nodes[i].getAttribute('data-study') === slug);
+      }
+    } catch (e) { /* graph not mounted yet — no-op */ }
   }
-  window._wsRenderStudyTabs = _wsRenderStudyTabs;
+  window._wsHighlightActiveDagNode = _wsHighlightActiveDagNode;
+
+  // ── Investigation-graph SELECTION (distinct from OPEN/active) ──────────────
+  // Two-stage interaction: one click SELECTS a study (a "selected" highlight +,
+  // at readable semantic-zoom bands, the full study info expanded in place); a
+  // second click on the already-selected study OPENS it (moves the "open" marker
+  // there — see _wsHighlightActiveDagNode). A node can be BOTH selected and open,
+  // showing both highlights. The selected slug lives on window so it survives the
+  // graph re-renders a band change triggers.
+  window._aigSelected = window._aigSelected || null;
+  function _aigCssEsc(s) {
+    try { if (window.CSS && CSS.escape) return CSS.escape(String(s)); } catch (e) {}
+    return String(s).replace(/["\\\]]/g, '\\$&');
+  }
+  // Expand/collapse ONE DAG node IN PLACE: the card's top-left stays anchored and
+  // the full detail block (Asks / Finds / plan + "Open study →") grows DOWNWARD,
+  // making the card taller where it already sits. The compact preview rows (clamped
+  // Asks/Finds + the band-2 inline plan) are hidden while expanded so nothing is
+  // duplicated. Pure DOM — NO relayout, so the card is never re-centered or
+  // repositioned; it may overlap the neighbours below it (a raised z-index keeps
+  // it on top) and the graph shell grows its scroll extent (see
+  // _aigAccommodateExpansion) so the user can scroll down to the added content.
+  function _aigSetNodeExpanded(node, want) {
+    if (!node) return;
+    var exp = !!want;
+    node.classList.toggle('aig-node-expanded', exp);
+    node.querySelectorAll('.aig-clamp, .aig-plan-inline').forEach(function (el) {
+      el.style.display = exp ? 'none' : '';
+    });
+    var full = node.querySelector('.aig-full-details');
+    if (full) full.style.display = exp ? 'block' : 'none';
+    var label = node.querySelector('.aig-more-label');
+    if (label) label.textContent = exp ? 'collapse' : (label.getAttribute('data-compact') || 'show full card');
+    var icon = node.querySelector('.aig-more-icon');
+    if (icon) icon.textContent = exp ? '⤡' : '⤢';
+    var btn = node.querySelector('.aig-more-findings');
+    if (btn) btn.setAttribute('aria-expanded', exp ? 'true' : 'false');
+    node.style.zIndex = exp ? '60' : '';
+    node.style.boxShadow = exp ? '0 8px 24px rgba(0,0,0,0.18)' : '';
+  }
+  window._aigSetNodeExpanded = _aigSetNodeExpanded;
+  // Re-assert the selected highlight after a (re-)render so it survives. Only the
+  // class — the full-info view expands IN PLACE inside the card (see
+  // _aigSetNodeExpanded), not in a floating panel.
+  function _aigApplySelection(slug) {
+    try {
+      var nodes = document.querySelectorAll('.iset-dag-node[data-study]');
+      for (var i = 0; i < nodes.length; i++) {
+        nodes[i].classList.toggle('aig-node-selected',
+          !!slug && nodes[i].getAttribute('data-study') === slug);
+      }
+    } catch (e) { /* graph not mounted — no-op */ }
+  }
+  window._aigApplySelection = _aigApplySelection;
+
+  // ── Selected-card FULL DETAIL (inline) ─────────────────────────────────────
+  // The full Asks / Finds / plan body, from the study DATA (not the band-limited
+  // inline preview) so it reads the same at any zoom. Rendered hidden inside each
+  // node and revealed in place by _aigSetNodeExpanded when the user expands the
+  // card — it is NOT a floating panel.
+  function _aigCardDetailHtml(s) {
+    var q = (s.question || '').replace(/\s+/g, ' ').trim();
+    var finds = _asFindings(s.findings);
+    var H = '';
+    if (q) H += '<div style="margin-top:4px"><span style="font-weight:700;color:#475569">Asks:</span> ' + _esc(q) + '</div>';
+    H += '<div style="margin-top:12px;font-weight:700;color:#475569">Finds:</div>';
+    if (finds && finds.length) {
+      H += finds.map(function (f) {
+        return '<div style="margin-top:6px;padding-left:10px;border-left:2px solid #e2e8f0">' +
+          _esc((f.summary || f.statement || f.id || '').replace(/\s+/g, ' ').trim()) + '</div>';
+      }).join('');
+    } else {
+      H += '<div style="margin-top:4px;color:#94a3b8"><em>pending evidence</em></div>';
+    }
+    try { var plan = _dagPlanHtml(s); if (plan) H += '<div style="margin-top:14px">' + plan + '</div>'; } catch (e) { /* no plan layer */ }
+    return H;
+  }
+  window._aigCardDetailHtml = _aigCardDetailHtml;
+
+  // Back-compat no-op: the floating popout was replaced by in-place expansion, but
+  // a few zoom/layout call sites still call this defensively. Nothing to close now.
+  function _aigCloseCardPopout() { /* popout removed — in-place expansion replaces it */ }
+  window._aigCloseCardPopout = _aigCloseCardPopout;
+
+  // After a card expands/collapses in place, grow (or shrink back) the graph
+  // shell's scroll extent so the taller card's extra content is reachable by
+  // scrolling the graph window — WITHOUT relaying out (node tops stay anchored).
+  // The shell scrolls against the .aig-spacer that _applyAigZoom sizes from
+  // shell.dataset.canvasH, so we extend canvasH to the lowest card bottom.
+  function _aigAccommodateExpansion() {
+    var shell = document.getElementById('investigation-dag-shell');
+    var nodes = document.getElementById('investigation-dag-nodes');
+    if (!shell || !nodes) return;
+    var base = parseFloat(shell.dataset.layoutCanvasH) || parseFloat(shell.dataset.canvasH) || 0;
+    var maxBottom = 0;
+    nodes.querySelectorAll('.iset-dag-node').forEach(function (n) {
+      var b = n.offsetTop + n.offsetHeight;
+      if (b > maxBottom) maxBottom = b;
+    });
+    var need = Math.max(base, Math.ceil(maxBottom) + 24);
+    nodes.style.height = need + 'px';
+    shell.dataset.canvasH = String(need);
+    try { _applyAigZoom(); } catch (e) { /* zoom not ready */ }
+  }
+  window._aigAccommodateExpansion = _aigAccommodateExpansion;
+
+  // The next study along this investigation's leads-to chain, for the study
+  // detail panel's "Next study →" button. Uses the server-computed studyEdges
+  // (source -> target == leads-to) captured in _lastDagArgs, falling back to the
+  // per-study children map. Returns the next slug, or null on a terminal study /
+  // when the graph isn't available. On a branch point, returns the first target.
+  function _nextStudySlug(current) {
+    if (!current) return null;
+    try {
+      var strip = function (n) { return String(n == null ? '' : n).trim(); };
+      var args = _lastDagArgs || [];
+      // Primary: server-computed studyEdges (source -> target == leads-to).
+      var edges = args[2] || [];
+      for (var i = 0; i < edges.length; i++) {
+        var e = edges[i] || {};
+        if (strip(e.source) === current && strip(e.target)) return strip(e.target);
+      }
+      // Fallback: a study whose parent_studies lists `current` is its child
+      // (current leads-to it) — covers investigations with no server edges.
+      var studies = args[0] || [];
+      for (var j = 0; j < studies.length; j++) {
+        var sj = studies[j] || {};
+        var parents = sj.parent_studies || [];
+        for (var k = 0; k < parents.length; k++) {
+          var pk = parents[k];
+          var pname = (pk && typeof pk === 'object') ? (pk.study || pk.name || pk.slug) : pk;
+          if (strip(pname) === current) return strip(sj.name || sj.slug);
+        }
+      }
+      // Final fallback: a terminal / off-chain node (e.g. an adversarial control
+      // that refutes rather than leads-to) has no successor in the leads-to chain.
+      // Rather than dead-end the "Next study →" button, follow the investigation's
+      // study order so it keeps advancing through every study. Null only on the
+      // genuinely last study.
+      var order = studies.map(function (s) { return strip((s || {}).name || (s || {}).slug); })
+                         .filter(function (n) { return n; });
+      var idx = order.indexOf(current);
+      if (idx !== -1 && idx + 1 < order.length) return order[idx + 1];
+      return null;
+    } catch (e) { return null; }
+  }
+  window._nextStudySlug = _nextStudySlug;
 
   function _wsOpenStudyTab(slug, tab) {
     var st = window._wsStudyTabs;
-    if (st.openTabs.indexOf(slug) === -1) st.openTabs.push(slug);
-    st.active = slug;
-    _wsRenderStudyTabs();
+    st.active = slug;                       // single open study — replaces any prior
+    _wsHighlightActiveDagNode(slug);        // mark the open node in the graph
+    // Opening a study collapses the investigation overview by default (it reopens
+    // via the header toggle, and re-opens automatically on return to the overview).
+    // Fully collapses (not just scrolled out of view) — click the toggle to show.
+    try { localStorage.setItem('inv-overview-collapsed', '1'); } catch (e) { /* ignore */ }
+    if (typeof _applyInvOverviewState === 'function') _applyInvOverviewState();
+    // The study opens INLINE below the investigation graph (the original behavior),
+    // with the graph↔study resize bar between them so the graph pane can be resized.
+    // The investigation carries its slim title bar and can be dragged to a side
+    // window manually; opening a study no longer forces that.
+    _renderGraphBarNav();
     var panel = document.getElementById('ws-study-panel');
     var frame = document.getElementById('ws-study-frame');
     if (panel) panel.style.display = '';
@@ -8755,87 +10039,61 @@
       if (tab) href += (href.indexOf('?') >= 0 ? '&' : '?') + 'tab=' + encodeURIComponent(tab);
       frame.src = href;
     }
-    // Keep the investigation context (overview + knowledge graph) EXPANDED above
-    // the study instead of collapsing it to the slim bar, and grow the study
-    // porthole to its content height, so the whole workspace is one continuous
-    // scroll: land on the study, scroll up into the graph and past it to the
-    // overview (user request).
+    // Remember the tab we opened on, so the next prev/next step keeps it (the
+    // iframe also re-asserts this via postMessage once it finishes loading).
+    window._wsStudyTabs = window._wsStudyTabs || {};
+    window._wsStudyTabs.tab = tab || 'overview';
+    // Shrink the graph pane (via _aigStudyActive in the height block) so the
+    // study card below rises up, and then bring the study panel clearly into
+    // view: docked at the very bottom it was easy to miss ("I didn't know it
+    // was showing"). scroll-margin-top on #ws-study-panel leaves a strip of the
+    // graph above so you can still scroll up into it; a brief flash cues the
+    // change. _embedLandingUntil shields the smooth scroll from the fit
+    // observer's height:0 measure + scroll-restore (would otherwise snap back).
     _setInvestigationContextCollapsed(false);
-    // Open a landing window BEFORE sizing: while active, content-driven refits
-    // skip their scroll-restore so they can't cancel the scroll-to-study below.
-    var _HOLD_MS = 1800;
-    window._embedLandingUntil = Date.now() + _HOLD_MS;
-    // Floor the study porthole at the scroll container's visible height so the
-    // study FILLS the view on open instead of sitting short under the (often
-    // tall) investigation graph. With a full-viewport porthole, landing on the
-    // study scrolls the graph fully off the top — scroll up to bring it back.
-    var _scroller = document.querySelector('.viv-content');
-    var _vh = (_scroller && _scroller.clientHeight) || window.innerHeight || 800;
-    var _floor = Math.max(560, _vh - 8);
-    if (typeof _fitEmbedToContent === 'function') _fitEmbedToContent(frame, _floor);
-    else if (typeof _fitEmbedToViewport === 'function') _fitEmbedToViewport(frame, panel, _floor);
-    // Land on the study AND actively HOLD it there. A one-shot smooth scroll
-    // wasn't enough: the investigation graph / About block re-renders (and the
-    // iframe refits) AFTER the scroll, springing the view back up to the top.
-    // So for a short window we re-land whenever the study gets pushed back down
-    // the page — releasing immediately on the first genuine user scroll so the
-    // user can freely scroll up into the graph.
-    if (panel && panel.scrollIntoView) {
-      var _released = false, _lastAssert = 0, _holdUntil = Date.now() + _HOLD_MS;
-      var _release = function () { _released = true; };
-      window.addEventListener('wheel', _release, { passive: true, once: true });
-      window.addEventListener('touchmove', _release, { passive: true, once: true });
-      window.addEventListener('keydown', function (e) {
-        if (['ArrowUp', 'ArrowDown', 'PageUp', 'PageDown', 'Home', 'End', ' '].indexOf(e.key) !== -1) _release();
-      }, { once: true });
-      var _tick = function () {
-        if (_released || !panel.isConnected) return;
-        var now = Date.now();
-        // panel.top well below the viewport top ⇒ the view sprang back up to the
-        // graph; re-land (throttled so smooth animations don't stack).
-        if (panel.getBoundingClientRect().top > 96 && now - _lastAssert > 240) {
-          _lastAssert = now;
-          try { panel.scrollIntoView({ behavior: 'smooth', block: 'start' }); } catch (_) {}
+    _aigStudyActive = true;
+    try { _applyAigZoom(); _aigAutoFillInline(); } catch (e) { /* ignore */ }
+    if (typeof _fitEmbedToContent === 'function') _fitEmbedToContent(frame);
+    else if (typeof _fitEmbedToViewport === 'function') _fitEmbedToViewport(frame, panel, 560);
+    if (panel) {
+      // Reveal the study panel ONLY when it's crammed near the very bottom
+      // (mostly off-screen). If it's already reasonably visible — which includes
+      // stepping between studies, where the panel's position doesn't change — do
+      // NOT scroll: leave the view exactly where it is. The iframe sizes async,
+      // so wait until the panel has real height before judging its position.
+      if (panel._bringT) clearTimeout(panel._bringT);
+      var _maybeReveal = function () {
+        var r = panel.getBoundingClientRect();
+        var vh = window.innerHeight || document.documentElement.clientHeight || 0;
+        // Already visible enough (top in the upper ~80% of the viewport)? Leave it.
+        if (!vh || r.top <= vh * 0.80) return;
+        // It's at the very bottom — pop it up just enough to reveal a good chunk,
+        // not all the way to the top.
+        var delta = Math.round(r.top - vh * 0.45);
+        if (delta < 24) return;
+        var sc = panel.parentElement;
+        while (sc) {
+          var oy = getComputedStyle(sc).overflowY;
+          if ((oy === 'auto' || oy === 'scroll') && sc.scrollHeight - sc.clientHeight > 1) break;
+          sc = sc.parentElement;
         }
-        if (now < _holdUntil) requestAnimationFrame(_tick);
-        else {
-          window.removeEventListener('wheel', _release);
-          window.removeEventListener('touchmove', _release);
-        }
+        window._embedLandingUntil = Date.now() + 700;   // shield from the fit observer's scroll-restore
+        if (sc) { try { sc.scrollBy({ top: delta, behavior: 'smooth' }); } catch (e) { sc.scrollTop += delta; } }
+        else { try { window.scrollBy({ top: delta, behavior: 'smooth' }); } catch (e) { window.scrollBy(0, delta); } }
       };
-      var _landed = false;
-      var _land = function () {
-        if (_landed || !panel.isConnected) return;
-        _landed = true;
-        try { panel.scrollIntoView({ behavior: 'smooth', block: 'start' }); } catch (_) {}
-        requestAnimationFrame(_tick);   // start the hold once we've landed
+      var _whenSized = function (left) {
+        if (panel.getBoundingClientRect().height > 120) { _maybeReveal(); }
+        else if (left > 0) panel._bringT = setTimeout(function () { _whenSized(left - 1); }, 160);
       };
-      if (frame) frame.addEventListener('load', function () { setTimeout(_land, 80); }, { once: true });
-      setTimeout(_land, 600);   // fallback if load already fired or never fires
-      // After the hold window, one final content-fit (suppressed during it) so
-      // the porthole ends at its true height, preserving the landed position.
-      if (frame) setTimeout(function () { if (frame._refit) frame._refit(); }, _HOLD_MS + 150);
+      panel._bringT = setTimeout(function () { _whenSized(44); }, 80);
+      panel.classList.remove('ws-study-panel-flash');
+      void panel.offsetWidth;                 // restart the flash animation
+      panel.classList.add('ws-study-panel-flash');
+      if (panel._flashT) clearTimeout(panel._flashT);
+      panel._flashT = setTimeout(function () { panel.classList.remove('ws-study-panel-flash'); }, 1500);
     }
   }
   window._wsOpenStudyTab = _wsOpenStudyTab;
-
-  function _wsCloseStudyTab(slug) {
-    var st = window._wsStudyTabs;
-    var wasActive = (st.active === slug);
-    var i = st.openTabs.indexOf(slug);
-    if (i !== -1) st.openTabs.splice(i, 1);
-    if (wasActive) st.active = st.openTabs[Math.max(0, i - 1)] || st.openTabs[0] || null;
-    _wsRenderStudyTabs();
-    if (!wasActive) return;                      // background tab closed -> porthole untouched
-    if (st.active) {
-      _wsOpenStudyTab(st.active);                // re-focus nearest remaining tab
-    } else {
-      var panel = document.getElementById('ws-study-panel');
-      if (panel) panel.style.display = 'none';
-      _setInvestigationContextCollapsed(false);  // last tab closed -> graph-only
-    }
-  }
-  window._wsCloseStudyTab = _wsCloseStudyTab;
 
   // Task 5: render an investigation's graph + objective into an arbitrary mount
   // (the workspace #ws-context). Reuses the v3 detail renderer verbatim by
@@ -8856,6 +10114,10 @@
       if (back) back.style.display = 'none';
       var titleEl = document.getElementById('investigation-detail-title');
       if (titleEl && titleEl.parentNode) titleEl.parentNode.style.display = 'none';
+      // Graph-prominent inline view: the investigation prose starts collapsed
+      // behind the "▸ Investigation overview" toggle (default), so the graph is
+      // top-aligned right after the title + toggle.
+      _applyInvOverviewState();
     }
     if (typeof _openInvestigationDetail === 'function') _openInvestigationDetail(name);
   }
@@ -8873,25 +10135,41 @@
     // affordance is discoverable) but starts DISABLED/greyed; the async summary
     // upgrades it to an active download when the investigation actually has
     // figures (same n_figures signal as the card).
-    var _figuresDisabled =
-      ' <button class="btn-mini" disabled ' +
-        'title="No figures yet — run this investigation\'s studies to generate them" ' +
-        'style="opacity:0.5;cursor:not-allowed">↓ figures</button>';
+    // Single "↓ Export ▾" dropdown consolidating report / notebook / figures
+    // (was three separate buttons). The figures item starts disabled and is
+    // upgraded async below when the investigation actually has figures.
+    //
+    // That async upgrade is snapshot-aware: DataSource.loadIsetList() maps to the
+    // baked /api/investigation-summaries.json in a published bundle. The `_api()`
+    // adapter only prefixes the base path (never appends `.json`), so it 404s in a
+    // snapshot — leaving the ↓ figures button greyed even when figures.zip is
+    // baked. DataSource is always present in a published bundle.
+    var _mi = 'class="btn-mini" role="menuitem" style="display:block;width:100%;text-align:left;border:none;background:transparent"';
+    var _figuresMenuItem =
+      '<span id="ws-actions-figures">' +
+        '<button class="btn-mini" role="menuitem" disabled ' +
+          'title="No figures yet — run this investigation\'s studies to generate them" ' +
+          'style="display:block;width:100%;text-align:left;border:none;background:transparent;opacity:0.5;cursor:not-allowed">Figures (none yet)</button>' +
+      '</span>';
+    var _exportDd =
+      '<span class="inv-report-wrap" style="position:relative;display:inline-flex">' +
+        '<button class="btn-mini" id="inv-report-btn" aria-haspopup="true" ' +
+          'aria-label="Export" title="Export — report, notebook, or figures" onclick="_toggleInvReportMenu(event)"><span aria-hidden="true">↓</span> Export ▾</button>' +
+        '<div id="inv-report-menu" role="menu" style="display:none;position:absolute;left:0;top:100%;margin-top:4px;' +
+          'background:#fff;border:1px solid #e2e8f0;border-radius:8px;box-shadow:0 6px 20px rgba(0,0,0,0.14);z-index:70;min-width:170px;padding:4px">' +
+          '<button ' + _mi + ' onclick="_closeInvReportMenu();_downloadInvestigationReport(null,\'html\')">HTML report</button>' +
+          '<button ' + _mi + ' onclick="_closeInvReportMenu();_downloadInvestigationReport(null,\'pdf\')">PDF report</button>' +
+          '<button ' + _mi + ' onclick="_closeInvReportMenu();_downloadInvestigationNotebook()">Notebook</button>' +
+          _figuresMenuItem +
+        '</div>' +
+      '</span> ';
     actions.innerHTML =
-      '<button class="btn-mini" onclick="_downloadInvestigationReport()" ' +
-        'title="Download the shareable HTML report">↓ report</button> ' +
-      '<button class="btn-mini" onclick="_downloadInvestigationNotebook()" ' +
-        'title="Download a self-contained Jupyter notebook">↓ notebook</button>' +
-      '<span id="ws-actions-figures">' + _figuresDisabled + '</span>' +
+      _exportDd +
       (isSnapshot ? '' :
       ' <button class="btn-mini" onclick="_rerunInvestigation()" ' +
-        'title="Re-run every member study\'s CURRENT baseline spec (re-derives from each study\'s study.yaml)">▶ Run current spec</button>');
+        'aria-label="Run current spec" ' +
+        'title="Run current spec — re-run every member study\'s CURRENT baseline (re-derives from each study.yaml)"><span aria-hidden="true">▶</span> Run</button>');
     if (name) {
-      // Snapshot-aware: DataSource.loadIsetList() maps to the baked
-      // /api/investigation-summaries.json in a published bundle. The `_api()`
-      // adapter only prefixes the base path (never appends `.json`), so it 404s
-      // in a snapshot — leaving the ↓ figures button greyed even when figures.zip
-      // is baked. DataSource is always present in a published bundle.
       (window.DataSource
         ? window.DataSource.loadIsetList()
         : fetch('/api/investigation-summaries', {headers: {Accept: 'application/json'}})
@@ -8900,9 +10178,10 @@
           var me = ((j && j.investigations) || []).filter(function (i) { return i.name === name; })[0];
           var host = document.getElementById('ws-actions-figures');
           if (me && me.n_figures && host) {
-            host.innerHTML = ' <button class="btn-mini" ' +
-              'onclick="window._vivFiguresFromCard(event,\'' + _esc(name) + '\')" ' +
-              'title="Download all figures (studies figures + post-study composites) as a zip">↓ figures</button>';
+            host.innerHTML = '<button class="btn-mini" role="menuitem" ' +
+              'style="display:block;width:100%;text-align:left;border:none;background:transparent" ' +
+              'onclick="_closeInvReportMenu();window._vivFiguresFromCard(event,\'' + _esc(name) + '\')" ' +
+              'title="Download all figures (studies figures + post-study composites) as a zip">Figures (zip)</button>';
           }
           // else: leave the disabled/greyed ↓ figures in place.
         }).catch(function () {});
@@ -8918,14 +10197,41 @@
     window._wsInvestigation = name;
     _showWorkspace();
     var title = document.getElementById('ws-title');
-    if (title) title.textContent = 'Investigation: ' + name;
+    if (title) {
+      // Show the investigation's display title (fall back to the slug when
+      // there's no title). Routing/API still keys off `name` (the slug).
+      var _iset = (window._isetIndex || []).find(function (i) { return i.name === name; });
+      var _label = (_iset && _iset.title) || name;
+      title.textContent = _label; title.title = _label;
+    }
+    var kicker = document.getElementById('ws-title-kicker');
+    if (kicker) kicker.textContent = 'Investigation';
     var status = document.getElementById('ws-status');
     if (status) { status.textContent = ''; status.className = ''; }
+    // Entering an investigation (no study yet): show the overview OPEN at the top,
+    // the graph inline below it (scroll down). Study-open collapses the overview.
+    try { localStorage.setItem('inv-overview-collapsed', '0'); } catch (e) { /* ignore */ }
+    if (window.GraphPanel && GraphPanel.isOpen && GraphPanel.isOpen()) GraphPanel.close();
     // Always the graph + objective detail — NOT the legacy "Study:<inv>" icon view.
     var ctx = document.getElementById('ws-context');
     if (ctx) _renderInvestigationDetailInto(name, ctx);
     _wsResetStudyTabs(name);   // graph expanded, no study open
     _wsSetInvestigationActions();   // Report/Notebook actions in #ws-actions
+    if (typeof _applyInvOverviewState === 'function') _applyInvOverviewState();
+    // The investigation graph shows by DEFAULT (the standalone collapsed bar was
+    // removed, so a stale collapsed state would otherwise leave it invisible with
+    // no affordance). Expand it on open; the header "Graph" button toggles it.
+    if (typeof _aigExpandInline === 'function') {
+      var _fsG = document.getElementById('investigation-dag-fs');
+      if (_fsG && _fsG.classList.contains('aig-collapsed')) _aigExpandInline();
+    }
+    // Sync the header "Graph" button caret after the graph has had a chance to
+    // render + auto-fill (its height, hence "shown", is set asynchronously).
+    if (typeof _aigSyncGraphToggle === 'function') {
+      _aigSyncGraphToggle();
+      setTimeout(_aigSyncGraphToggle, 400);
+      setTimeout(_aigSyncGraphToggle, 1200);
+    }
   }
   window._showInvestigationWorkspace = _showInvestigationWorkspace;
 
@@ -9098,7 +10404,7 @@
   // Investigation title for a slug (Studies table's Investigation column).
   function _isetTitleForSlug(inv) {
     if (!inv) return 'Ungrouped';
-    var it = (window._isetIndex || []).find(function (i) { return i.name === inv; });
+    var it = _isetByName()[inv];   // O(1)
     return (it && (it.title || it.name)) || inv;
   }
   function _fmtStudyDate(iso) {
@@ -9249,13 +10555,12 @@
     }
     var cards = document.querySelectorAll('#investigations-list .investigation-set-card');
 
-    // iset slug -> member study objects, for study-aware matching.
+    // iset slug -> member study objects, for study-aware matching (O(1) lookups).
+    var byName = _studyByName();
     var studiesByIset = {};
     (window._isetIndex || []).forEach(function(iset) {
       studiesByIset[iset.name] = (iset.studies || [])
-        .map(function(slug) {
-          return (window._investigations || []).find(function(s) { return s.name === slug; });
-        }).filter(Boolean);
+        .map(function(slug) { return byName[slug]; }).filter(Boolean);
     });
 
     function _cardMatches(card, requireAll) {
@@ -9292,6 +10597,14 @@
     if (empty) empty.style.display = anyVisible ? 'none' : '';
   }
   window._filterInvestigations = _filterInvestigations;
+  // Debounced input handler (the filter is show/hide, but still O(cards) per call —
+  // coalesce fast typing). _filterInvestigations stays immediate for programmatic use.
+  var _invFilterTimer = 0;
+  function _filterInvestigationsInput() {
+    if (_invFilterTimer) clearTimeout(_invFilterTimer);
+    _invFilterTimer = setTimeout(function() { _invFilterTimer = 0; _filterInvestigations(); }, 130);
+  }
+  window._filterInvestigationsInput = _filterInvestigationsInput;
 
   // Close/Reopen an investigation: POST the new status, then reload the list.
   // Resilient — never throws; surfaces a brief inline error on the button.
@@ -9611,6 +10924,71 @@
   // headline; the verdict answers it as a colored status line (not a box); depth
   // (how-to-read / biology / background / glossary) lives in one flat tab strip.
   // Reads the SAME canonical fields as the downloaded report's executive summary.
+  // Plan-progress board: the investigation's cumulative gates (A→E) with a LIVE
+  // status derived server-side (lib/plan_board) from member-study state — a
+  // campaign-level roadmap rendered directly under the brief. Empty when the
+  // investigation declares no plan_gates.
+  function _planBoardHtml(d, opts) {
+    var gates = (d && d.plan_board) || [];
+    if (!gates.length) return '';
+    // Honest status set: executed gates show their real verdict (met/qualified/
+    // refuted), not a cascaded "blocked". passed==met (clean); qualified = met
+    // with caveats; refuted = a tested-and-refuted (off-spine) branch.
+    opts = opts || {};
+    var compact = !!opts.compact;   // slim one-row chips for the "Plan progress" tab
+    var meta = {
+      passed:      { cls: 'passed',    label: 'passed' },
+      met:         { cls: 'passed',    label: 'met' },
+      qualified:   { cls: 'qualified', label: 'qualified' },
+      refuted:     { cls: 'refuted',   label: 'refuted' },
+      in_progress: { cls: 'progress',  label: 'in progress' },
+      blocked:     { cls: 'blocked',   label: 'blocked' },
+      pending:     { cls: 'pending',   label: 'pending' },
+    };
+    var H = ['<section class="inv-plan-board' + (compact ? ' inv-plan-board-compact' : '') + '">'];
+    // The tab label already says "Plan progress" — drop the redundant heading in compact mode.
+    if (!compact) H.push('<h3 class="inv-plan-board-title">Plan progress · cumulative gates</h3>');
+    // Honest at-a-glance tally by outcome — NOT a strict "passed" count (which reads 0
+    // against met/qualified/refuted verdicts and makes an evaluated board look idle).
+    var _tally = {};
+    gates.forEach(function (g) { _tally[g.status] = (_tally[g.status] || 0) + 1; });
+    var _tOrder = ['passed', 'met', 'qualified', 'refuted', 'in_progress', 'blocked', 'pending'];
+    var _tBits = [];
+    _tOrder.forEach(function (s) { if (_tally[s]) _tBits.push(_tally[s] + ' ' + (meta[s] ? meta[s].label : s)); });
+    if (_tBits.length)
+      H.push('<div class="inv-plan-tally" style="font-size:0.82em;color:#64748b;margin:' +
+             (compact ? '0 0 8px' : '2px 0 10px') + '">' + _escInv(_tBits.join(' · ')) + '</div>');
+    H.push('<ol class="inv-plan-gates">');
+    gates.forEach(function (g) {
+      var sm = meta[g.status] || meta.pending;
+      // Off-spine branch (e.g. a tested-and-refuted side-question) — doesn't gate
+      // the spine; marked distinctly so it doesn't read as spine progress.
+      var isBranch = !!(g.off_spine || g.branch);
+      var members = g.member_studies || [];
+      var pending = g.pending_studies || [];
+      var crit = String(g.criterion || '').replace(/\s+/g, ' ').trim();
+      var bits = [];
+      if (members.length) bits.push(members.length + ' stud' + (members.length === 1 ? 'y' : 'ies'));
+      if (pending.length) bits.push(pending.length + ' planned');
+      H.push('<li class="inv-plan-gate inv-gate-' + sm.cls +
+             (g.optional ? ' inv-gate-optional' : '') +
+             (isBranch ? ' inv-gate-branch' : '') +
+             '" title="' + _escInv(crit) + '">');
+      H.push('<div class="inv-gate-head">' +
+               '<span class="inv-gate-id">' + _escInv(String(g.id || '')) + '</span>' +
+               '<span class="inv-gate-name">' + _escInv(g.name || '') + '</span>' +
+               (isBranch ? '<span class="inv-gate-branch-tag">branch</span>' : '') +
+               (g.optional ? '<span class="inv-gate-opt">optional</span>' : '') +
+             '</div>');
+      H.push('<div class="inv-gate-status inv-gate-status-' + sm.cls + '">' + sm.label + '</div>');
+      if (bits.length) H.push('<div class="inv-gate-members">' + _escInv(bits.join(' · ')) + '</div>');
+      H.push('</li>');
+    });
+    H.push('</ol></section>');
+    return H.join('');
+  }
+  window._planBoardHtml = _planBoardHtml;
+
   function _renderInvOpening(d) {
     d = d || {};
     var ex = d.executive || {};
@@ -9662,50 +11040,162 @@
     var H = [];
     H.push('<div class="inv-brief inv-vs-' + vsClass + '">');
 
-    // Headline.
-    if (headline) H.push('<h2 class="inv-brief-q">' + _invInline(headline) + '</h2>');
+    // Headline. The chrome header (#ws-title) already shows the investigation
+    // title, so don't repeat it here — only render the brief headline when it's
+    // the driving-question fallback (title-less investigations), never a title dup.
+    if (headline && headline !== d.title) H.push('<h2 class="inv-brief-q">' + _invInline(headline) + '</h2>');
 
-    // Verdict — a colored status line.
-    if (verdict) {
-      H.push('<div class="inv-brief-verdict">' +
-        '<span class="inv-vs-pill">' + _esc(vs.toUpperCase()) + '</span>' +
-        '<span class="inv-brief-verdict-label">Current verdict</span> ' +
-        '<span class="inv-brief-verdict-text">' + _invInline(verdict) + '</span></div>');
+    // Front stays lean — just the headline — so the investigation graph sits high
+    // on the page. The overview, verdict, background (with the question/hypothesis
+    // + evidence folded in), plan and decisions all live behind the tab strip
+    // below; only the short Overview tab shows on load.
+
+    // Canonical section set — a FIXED, ordered list of tabs so every
+    // investigation renders the SAME shape (reproducible across the workspace),
+    // not an ad-hoc union of whatever fields happen to be present. Each section
+    // maps to one canonical investigation.yaml field; a tab appears when its
+    // field is authored, always in this order. Add/remove a section in ONE place
+    // (here). Reader flow: the answer (Verdict) → context (Background, Biology) →
+    // argument (Hypothesis & evidence) → aids (How to read, Glossary) → the plan
+    // (Plan progress) → the open calls (Decisions).
+    var _refsMap = d.references_resolved || {};
+    function _invCite(keys) {
+      keys = Array.isArray(keys) ? keys : [];
+      if (!keys.length) return '';
+      return ' ' + keys.map(function(k) {
+        var r = _refsMap[k]; var lbl = (r && r.label) || k;
+        var ttl = (r && r.title) ? ' title="' + _escInv(r.title) + '"' : '';
+        return '<span class="inv-cite"' + ttl + ' style="display:inline-block;font-size:11px;' +
+          'font-weight:600;padding:1px 7px;border-radius:9px;margin:0 2px 2px 0;white-space:nowrap;' +
+          'background:' + (r ? '#eff6ff;color:#1d4ed8' : '#f1f5f9;color:#64748b') + '">' +
+          _escInv(lbl) + '</span>';
+      }).join('');
     }
 
-    // Introduction — the full what_is_this rendered as markdown prose.
-    if (whatIs) H.push('<div class="inv-brief-prose inv-brief-intro">' + _renderInvLeadMarkdown(whatIs) + '</div>');
-
-    // Meta — the driving question + hypothesis, one muted line each.
-    var _meta = [];
-    if (q) _meta.push('<span class="inv-brief-meta-item"><em>Question</em> ' + _invInline(oneline(q)) + '</span>');
-    if (hyp) _meta.push('<span class="inv-brief-meta-item"><em>Hypothesis</em> ' + _invInline(hyp) + '</span>');
-    if (_meta.length) H.push('<div class="inv-brief-meta">' + _meta.join('') + '</div>');
-
-    // Depth — one flat tab strip; only tabs with content are shown.
     var tabs = [];
+
+    // Structured-argument (evidence) body — now folded INTO Background rather than
+    // its own tab (scientific_argument main_claim + key_claims as cited claims +
+    // competing frameworks). Citation chips resolve from references/papers.bib.
+    var kclaims    = Array.isArray(d.key_claims) ? d.key_claims : [];
+    var sciArg     = d.scientific_argument || {};
+    var frameworks = Array.isArray(d.competing_frameworks) ? d.competing_frameworks : [];
+    function _evidenceBody() {
+      var evBody = '';
+      if (sciArg.main_claim)
+        evBody += '<p class="inv-brief-prose" style="font-weight:600;margin:0 0 10px">' +
+          _escInv(sciArg.main_claim) + '</p>';
+      if (kclaims.length)
+        evBody += '<ul style="list-style:none;padding:0;margin:0;display:grid;gap:10px">' +
+          kclaims.map(function(c) {
+            c = c || {};
+            var counter = /contest|unfavorab|challenge|less favorab/i.test(c.claim || '');
+            return '<li style="padding-left:12px;border-left:2px solid ' +
+              (counter ? '#d97706' : '#cbd5e1') + '">' +
+              _escInv(c.claim || c.text || '') + _invCite(c.cites) + '</li>';
+          }).join('') + '</ul>';
+      if (frameworks.length)
+        evBody += '<div class="inv-brief-frameworks-fold">' +
+          '<div class="inv-brief-frameworks-label">Competing frameworks adjudicated</div>' +
+          '<ul class="inv-brief-frameworks">' + frameworks.map(function(f) {
+            f = f || {};
+            return '<li><strong>' + _escInv(f.name || '') + '</strong>' +
+              (f.relation ? ' <span class="muted">— ' + _escInv(f.relation) + '</span>' : '') + '</li>';
+          }).join('') + '</ul></div>';
+      return evBody;
+    }
+
+    // 1. Overview — the lean landing tab (DEFAULT): a one-paragraph what-is-this +
+    // the verdict in brief (status pill + opening sentence). Deliberately short so
+    // the investigation graph sits high on the page; depth lives in the tabs below.
+    var whatIsLede = whatIs ? whatIs.split(/\n\s*\n/)[0].trim() : '';
+    var ovParts = [];
+    if (whatIsLede)
+      ovParts.push('<div class="inv-brief-prose inv-brief-overview-lede">' +
+        _renderInvLeadMarkdown(whatIsLede) + '</div>');
+    if (verdict)
+      ovParts.push('<div class="inv-brief-overview-verdict inv-vs-' + vsClass + '" ' +
+        'style="margin-top:10px;display:flex;align-items:baseline;gap:8px;flex-wrap:wrap">' +
+        '<span class="inv-vs-pill">' + _esc(vs.toUpperCase()) + '</span> ' +
+        '<span class="inv-brief-overview-verdict-text" style="color:#475569">' +
+        _invInline(headlineOf(verdict)) + '</span></div>');
+    if (ovParts.length)
+      tabs.push({ id:'overview', label:'Overview', html: ovParts.join('') });
+
+    // 2. Verdict — the full campaign answer (executive.verdict); behind a click.
+    if (verdict)
+      tabs.push({ id:'verdict', label:'Verdict', badge: vs ? vs.toUpperCase() : '',
+        html: '<div class="inv-brief-verdict-tab inv-vs-' + vsClass + '">' +
+          '<span class="inv-vs-pill">' + _esc(vs.toUpperCase()) + '</span>' +
+          '<div class="inv-brief-verdict-text">' + _invInline(verdict) + '</div></div>' });
+
+    // 3. Background — the lead intro, the driving Question + Hypothesis, and the
+    // structured argument (Hypothesis & evidence folded in here per the owner).
+    var bgParts = [];
+    if (leadProse)
+      bgParts.push('<div class="inv-brief-prose">' + _renderInvLeadMarkdown(leadProse) + '</div>');
+    var _bgMeta = [];
+    if (q) _bgMeta.push('<span class="inv-brief-meta-item"><em>Question</em> ' + _invInline(oneline(q)) + '</span>');
+    if (hyp) _bgMeta.push('<span class="inv-brief-meta-item"><em>Hypothesis</em> ' + _invInline(hyp) + '</span>');
+    if (_bgMeta.length) bgParts.push('<div class="inv-brief-meta">' + _bgMeta.join('') + '</div>');
+    var _evBody = _evidenceBody();
+    if (_evBody)
+      bgParts.push('<div class="inv-brief-evidence">' +
+        '<div class="inv-brief-frameworks-label">Hypothesis &amp; evidence</div>' + _evBody + '</div>');
+    if (bgParts.length)
+      tabs.push({ id:'background', label:'Background', html: bgParts.join('') });
+
+    // 4. Biology — the plain-English mechanism narrative (biological_story).
+    if (bio)
+      tabs.push({ id:'biology', label:'Biology', html:
+        '<div class="inv-brief-prose">' + _renderInvLeadMarkdown(bio) + '</div>' });
+
+    // 5. How to read — evaluator tips (string prose or a list of tips).
     if (hasHowto)
       tabs.push({ id:'howto', label:'How to read', html: Array.isArray(howto)
         ? '<ol class="inv-brief-howto">' + howto.map(function(x) {
             return '<li>' + _renderInvLeadMarkdown(String(typeof x === 'string' ? x : (x.text || x.tip || ''))).replace(/^<p>|<\/p>$/g, '') + '</li>';
           }).join('') + '</ol>'
         : '<div class="inv-brief-prose">' + _renderInvLeadMarkdown(String(howto)) + '</div>' });
-    if (bio)
-      tabs.push({ id:'biology', label:'Biology', html:
-        '<div class="inv-brief-prose">' + _renderInvLeadMarkdown(bio) + '</div>' });
-    if (leadProse)
-      tabs.push({ id:'background', label:'Background', html:
-        '<div class="inv-brief-prose">' + _renderInvLeadMarkdown(leadProse) + '</div>' });
+
+    // 6. Glossary — investigation-local term definitions.
     if (glossary.length)
       tabs.push({ id:'glossary', label:'Glossary', html:
         '<dl class="inv-brief-glossary">' + glossary.map(function(g) {
           return '<dt>' + _escInv(g.term || g.name || '') + '</dt><dd>' + _escInv(g.definition || g.def || '') + '</dd>';
         }).join('') + '</dl>' });
 
+    // 7. Plan progress — the campaign's cumulative gates (A→E), compacted behind
+    // a tab rather than a space-consuming always-open board under the brief.
+    var _planHtml = _planBoardHtml(d, { compact: true });
+    if (_planHtml) {
+      var _pb = d.plan_board || [];
+      // Count EVALUATED gates (any terminal verdict), not strict "passed" — honest
+      // met/qualified/refuted verdicts are real progress, so "0/N passed" misread an
+      // evaluated board as no progress. The per-outcome breakdown is in the board tally.
+      var _TERMINAL = { passed: 1, met: 1, qualified: 1, refuted: 1 };
+      var _evaluated = _pb.filter(function (g) { return _TERMINAL[g.status]; }).length;
+      tabs.push({ id:'plan', label:'Plan progress', html:_planHtml,
+        badge: _pb.length ? (_evaluated + '/' + _pb.length + ' evaluated') : '' });
+    }
+
+    // 8. Decisions — the open expert decisions, HIGHLIGHTED when any are open.
+    var _decHtml = _invDecisionTabHtml(d);
+    if (_decHtml) {
+      var _nDec = (((d.executive || {}).decisions_needed) || []).length;
+      tabs.push({ id: 'decisions', label: 'Decisions', html: _decHtml,
+        badge: _nDec ? (_nDec + ' needed') : 'all clear', attention: _nDec > 0 });
+    }
+
+    // Overview is pushed first, so it is the default (active) tab via the i===0
+    // rule below; every other tab (Verdict, Background, …) is reached by a click.
     if (tabs.length) {
       H.push('<div class="inv-brief-tabs" role="tablist">' + tabs.map(function(t, i) {
-        return '<button type="button" class="inv-brief-tab' + (i === 0 ? ' active' : '') +
-          '" onclick="_invBriefTab(this,\'' + t.id + '\')">' + _esc(t.label) + '</button>';
+        var _cls = 'inv-brief-tab' + (i === 0 ? ' active' : '') + (t.attention ? ' inv-brief-tab-attn' : '');
+        var _badge = t.badge ? '<span class="inv-brief-tab-badge' + (t.attention ? ' attn' : '') +
+          '">' + _esc(t.badge) + '</span>' : '';
+        return '<button type="button" class="' + _cls +
+          '" onclick="_invBriefTab(this,\'' + t.id + '\')">' + _esc(t.label) + _badge + '</button>';
       }).join('') + '</div>');
       H.push('<div class="inv-brief-panels">' + tabs.map(function(t, i) {
         return '<div class="inv-brief-panel" data-panel="' + t.id + '"' + (i === 0 ? '' : ' style="display:none"') + '>' + t.html + '</div>';
@@ -9715,6 +11205,162 @@
     H.push('</div>');
     return H.join('');
   }
+
+  // ---------------------------------------------------------------------------
+  // Decision cockpit — the open expert decisions (executive.decisions_needed)
+  // surfaced as a prominent, actionable card high on the investigation page.
+  // Each open decision shows its question + context, a resolution-note field and
+  // a Resolve button (POST /api/investigation-decision-resolve, which moves it
+  // into executive.decisions_resolved). The campaign-plan docs (d.campaign_docs,
+  // incl. the Scientific Enrichment Plan) link at the top; resolved decisions
+  // fold into a log below. Renders nothing when there's nothing to show.
+  // ---------------------------------------------------------------------------
+  // The open expert decisions, rendered as the body of the "Decisions" brief tab
+  // (added to the tabs[] array below), not a space-consuming always-open card.
+  // Returns '' when there is nothing to show.
+  function _invDecisionTabHtml(d) {
+    d = d || {};
+    var ex = d.executive || {};
+    var needed = Array.isArray(ex.decisions_needed) ? ex.decisions_needed : [];
+    var resolved = Array.isArray(ex.decisions_resolved) ? ex.decisions_resolved : [];
+    var docs = Array.isArray(d.campaign_docs) ? d.campaign_docs : [];
+    // Resolving writes to disk — hide the controls in a read-only federated view
+    // or a published snapshot (no live backend); the decisions still display.
+    var readOnly = !!d.read_only || (window.__DASH_CONFIG__ || {}).mode === 'snapshot';
+    var invName = d.name || window._currentIset || '';
+
+    if (!needed.length && !resolved.length && !docs.length) return '';
+
+    var n = needed.length;
+    var accent = n ? '#b45309' : '#16a34a';      // amber when open, green when all clear
+    var H = [];
+    H.push('<div style="padding:2px 0 4px">');
+    H.push('<div class="muted" style="font-size:0.84em;margin:0 0 12px">Expert decisions steering this campaign</div>');
+
+    // Campaign-plan docs — the plan the decisions act on (links to e.g. the
+    // Scientific Enrichment Plan). Served at /<path> from the workspace root.
+    if (docs.length) {
+      H.push('<div style="margin:0 0 12px;font-size:0.9em">');
+      H.push('<span class="muted" style="font-weight:600">Campaign plan:</span> ');
+      H.push(docs.map(function (doc) {
+        doc = doc || {};
+        var label = _escInv(doc.name || doc.path || '(unnamed)');
+        if (doc.path) {
+          var href = '/' + String(doc.path).replace(/^\/+/, '');
+          var ttl = doc.description ? ' title="' + _escInv(doc.description) + '"' : '';
+          return '<a href="' + _esc(href) + '" target="_blank" rel="noopener"' + ttl +
+            ' style="display:inline-block;margin:2px 6px 2px 0;padding:2px 10px;border-radius:12px;' +
+            'background:#eff6ff;color:#1d4ed8;font-weight:600;text-decoration:none">📄 ' + label + '</a>';
+        }
+        return '<span style="display:inline-block;margin:2px 6px 2px 0;padding:2px 10px;border-radius:12px;' +
+          'background:#f1f5f9;color:#475569;font-weight:600">📄 ' + label + '</span>';
+      }).join(''));
+      H.push('</div>');
+    }
+
+    // Open decisions — each an actionable card.
+    if (n) {
+      H.push('<div style="display:grid;gap:10px">');
+      needed.forEach(function (dec, i) {
+        dec = dec || {};
+        var question = (typeof dec === 'string') ? dec : (dec.question || dec.title || '');
+        var context = (typeof dec === 'string') ? '' : (dec.context || dec.detail || '');
+        H.push('<div class="inv-decision" data-index="' + i + '" data-investigation="' + _esc(invName) +
+          '" data-question="' + _esc(question) + '"' +
+          ' style="background:#fff;border:1px solid #fde68a;border-radius:7px;padding:10px 12px">');
+        H.push('<div style="display:flex;gap:8px;align-items:flex-start">');
+        H.push('<span style="color:' + accent + ';font-weight:800;font-size:0.95em;line-height:1.5">' + (i + 1) + '.</span>');
+        H.push('<div style="flex:1;min-width:0">');
+        H.push('<div style="font-weight:650;color:#1e293b;line-height:1.4">' + _escInv(question) + '</div>');
+        if (context)
+          H.push('<div class="muted" style="font-size:0.86em;line-height:1.5;margin-top:4px">' +
+            _renderInvLeadMarkdown(context) + '</div>');
+        if (!readOnly) {
+          H.push('<div style="margin-top:8px">');
+          H.push('<textarea rows="2" placeholder="Resolution note — the call you made and why…" ' +
+            'style="width:100%;box-sizing:border-box;font:inherit;font-size:0.86em;padding:6px 8px;' +
+            'border:1px solid #cbd5e1;border-radius:6px;resize:vertical"></textarea>');
+          H.push('<div style="margin-top:6px;text-align:right">');
+          H.push('<button type="button" class="action-btn js-authoring" onclick="_resolveInvDecision(this,' + i + ')" ' +
+            'style="font-size:0.82em;padding:3px 12px;font-weight:600;background:' + accent + ';color:#fff;border:none">' +
+            '✓ Resolve</button>');
+          H.push('</div>');
+          H.push('</div>');
+        }
+        H.push('</div></div></div>');
+      });
+      H.push('</div>');
+    }
+
+    // Resolved-decision log — folded by default.
+    if (resolved.length) {
+      H.push('<details style="margin-top:' + (n ? '12px' : '0') + '">');
+      H.push('<summary style="cursor:pointer;font-size:0.88em;font-weight:600;color:#15803d">' +
+        '✓ Resolved decisions (' + resolved.length + ')</summary>');
+      H.push('<ul style="margin:8px 0 0;padding:0;list-style:none;display:grid;gap:6px">');
+      H.push(resolved.map(function (r) {
+        var txt = (typeof r === 'string') ? r : (r && (r.decision || r.question || r.text) || '');
+        return '<li style="font-size:0.86em;line-height:1.5;color:#334155;padding-left:12px;' +
+          'border-left:2px solid #86efac">' + _escInv(txt) + '</li>';
+      }).join(''));
+      H.push('</ul></details>');
+    }
+
+    H.push('</div>');
+    return H.join('');
+  }
+  // Back-compat: the cockpit moved into the "Decisions" brief tab; clear any
+  // legacy standalone host so nothing double-renders below the tabs.
+  function _renderInvDecisionCockpit(d) {
+    var host = document.getElementById('investigation-decision-cockpit');
+    if (host) host.innerHTML = '';
+  }
+  window._renderInvDecisionCockpit = _renderInvDecisionCockpit;
+  window._invDecisionTabHtml = _invDecisionTabHtml;
+
+  // Resolve one open decision: read the note from the card, POST, then refresh
+  // the investigation detail so the cockpit re-renders with the moved decision.
+  // Passes the question as an optimistic-concurrency guard (the server 409s if
+  // the list shifted under a concurrent resolve). CSRF is handled by the
+  // same-origin guard middleware, like every other mutating POST.
+  function _resolveInvDecision(btn, index) {
+    var card = btn.closest('.inv-decision');
+    if (!card) return;
+    var ta = card.querySelector('textarea');
+    var note = ((ta && ta.value) || '').trim();
+    if (!note) {
+      if (typeof _showToast === 'function') _showToast('Enter a resolution note before resolving.', { danger: true });
+      else alert('Enter a resolution note before resolving.');
+      if (ta) ta.focus();
+      return;
+    }
+    var question = card.getAttribute('data-question') || '';
+    var invName = card.getAttribute('data-investigation') || window._currentIset || '';
+    var prev = btn.textContent;
+    btn.disabled = true; btn.textContent = 'Resolving…';
+    apiFetch('POST', '/api/investigation-decision-resolve', {
+      investigation: invName, index: index, resolution: note, question: question
+    })
+      .then(function (r) { return r.json().then(function (j) { return { ok: r.ok, j: j, status: r.status }; }); })
+      .then(function (res) {
+        if (!res.ok || (res.j && res.j.error)) {
+          var msg = 'Could not resolve: ' + ((res.j && res.j.error) || ('HTTP ' + res.status));
+          if (typeof _showToast === 'function') _showToast(msg, { danger: true }); else alert(msg);
+          btn.disabled = false; btn.textContent = prev;
+          return;
+        }
+        var ok = 'Decision resolved — ' + ((res.j && res.j.remaining) || 0) + ' still open';
+        if (typeof _showToast === 'function') _showToast(ok);
+        // Refresh the detail so the cockpit, log and count badge re-render.
+        if (typeof _openInvestigationDetail === 'function') _openInvestigationDetail(invName);
+      })
+      .catch(function (err) {
+        var msg = 'Could not resolve: ' + err;
+        if (typeof _showToast === 'function') _showToast(msg, { danger: true }); else alert(msg);
+        btn.disabled = false; btn.textContent = prev;
+      });
+  }
+  window._resolveInvDecision = _resolveInvDecision;
 
   // Flat tab switcher for the inquiry brief (scoped to the clicked brief).
   function _invBriefTab(btn, id) {
@@ -9751,7 +11397,7 @@
     document.getElementById('investigations-list').style.display = 'none';
     document.getElementById('investigation-detail-view').style.display = '';
     document.getElementById('investigation-detail-title').textContent = name;
-    document.getElementById('investigation-detail-description').textContent = 'Loading…';
+    document.getElementById('investigation-detail-description').innerHTML = window.ProgressTrack ? window.ProgressTrack.loadingHtml() : 'Loading…';
 
     // Route through DataSource so snapshot mode reads api/investigation/<name>.json from
     // the static bundle instead of hitting the live /api/investigation/<name> endpoint
@@ -9777,9 +11423,16 @@
         // Lead paragraph: render lead (preferred) or fall back to description.
         // Light markdown: paragraph splits, * bullets, `code`, **bold**.
         var leadEl = document.getElementById('investigation-detail-description');
-        // The inquiry brief renders the full opening — headline, verdict, meta,
-        // and the how-to-read / biology / background / glossary tabs — from `d`.
+        // The inquiry brief renders the full opening — headline, intro, meta, and
+        // the fixed canonical tab strip (Verdict / Background / Biology /
+        // Hypothesis & evidence / How to read / Glossary / Plan progress /
+        // Decisions) — all from `d`. The plan-progress board now lives inside its
+        // own compact tab (not appended as a separate board below).
         leadEl.innerHTML = _renderInvOpening(d);
+
+        // Decision cockpit: the open expert decisions + campaign plan, surfaced
+        // prominently directly under the brief (built from d.executive).
+        try { _renderInvDecisionCockpit(d); } catch (_) { /* best-effort */ }
 
         // Phase B4: render today's study graph (unchanged), then layer each
         // study's typed evidence chain into its card. Falls back to the plain
@@ -9840,90 +11493,178 @@
     if (s === 'medium') return { dot: '#f59e0b', bg: '#fffbeb', bd: '#f59e0b', col: '#92400e' };
     return { dot: '#3b82f6', bg: '#eff6ff', bd: '#3b82f6', col: '#1e40af' };  // low / default
   }
+  // Needs-attention is a SINGLE surface now — the toolbar chip. Clicking it opens
+  // the same rich scan popover used for "all clear" (per-check pass counts + a
+  // drill-in link per flagged item). The old in-body banner that duplicated this
+  // below the header is gone. Kept as a named entry point for any caller: anchor
+  // the popover on the chip button.
+  function _aigShowNeedsAttention() {
+    var chip = document.querySelector('#aig-needs-attention-chip .aig-na-chip')
+            || document.getElementById('aig-needs-attention-chip');
+    if (chip && window._aigShowAllClearInfo) window._aigShowAllClearInfo(chip);
+  }
+  window._aigShowNeedsAttention = _aigShowNeedsAttention;
+
+  // "All clear" explainer popover: says what the deterministic needs-attention
+  // scan means and lists the checks behind it (all passing when all-clear), so
+  // the user can see there's nothing to act on — or what would be flagged.
+  function _aigCloseAllClearInfo() { var p = document.getElementById('aig-allclear-pop'); if (p) p.remove(); }
+  function _aigShowAllClearInfo(anchor) {
+    if (document.getElementById('aig-allclear-pop')) { _aigCloseAllClearInfo(); return; }   // toggle
+    var d = window._lastNeedsAttention || {};
+    var summary = d.summary || {};
+    var checks = d.checks || [];
+    var memberCount = (summary.member_count != null) ? summary.member_count : null;
+    var total = summary.total || 0;
+    // Group the live items by kind so a flagged check can list its actual refs.
+    var byKindItems = {};
+    (d.items || []).forEach(function (it) {
+      (byKindItems[it.kind] = byKindItems[it.kind] || []).push(it);
+    });
+    // Hover help per check — what the scan actually looks at (so the popover
+    // explains itself without a block of prose).
+    var HELP = {
+      uncovered_ac: 'Every acceptance criterion in the investigation is linked to a study that gates it.',
+      verdict_divergence: 'Each study’s computed verdict matches the gate its author declared (no silent divergence).',
+      hard_gate: 'No study has a failing hard gate in its latest run.',
+      test_regression: 'No behavior test that once passed is now failing.',
+      diagnostic_branch_needed: 'Any failed / needs-calibration verdict has a diagnostic study seeded to investigate why.',
+      invariant_regression: 'No declared invariant (invariant_check) has been invalidated or weakened.',
+      open_feedback: 'No expert feedback is left open (all applied or dismissed).',
+      param_drift: 'A run’s applied parameters still match the study’s enforced/pinned values.',
+      unregistered_confirmatory: 'Confirmatory studies are registered against the claim they confirm.',
+      stale_finding: 'No finding is stale relative to the run it was derived from.',
+      unresolved_composite: 'Every study\'s declared composite resolves to a registered composite id — so it can build and run.',
+      env_stale: 'Run environments (deps/image) are current, not stale.',
+      nondeterministic: 'Runs are reproducible (seeded / deterministic where required).',
+      phantom_observable: 'Every declared observable actually exists in the built composite’s structure.'
+    };
+    // One row per check, driven by the LIVE scan numbers (passing / examined),
+    // not prose. ✓ when nothing is flagged; amber with a drill-in list otherwise.
+    var rows = checks.map(function (c) {
+      var flagged = c.flagged || 0;
+      var examined = c.examined || 0;
+      var help = HELP[c.kind] || '';
+      var metric;
+      if (examined > 0) metric = '<span style="color:#64748b;font-variant-numeric:tabular-nums">' + (c.passing || 0) + ' / ' + examined + '</span>';
+      else metric = '<span class="muted" style="font-size:0.9em">none to check</span>';
+      var sub = '';
+      if (flagged > 0 && byKindItems[c.kind]) {
+        sub = '<ul style="margin:2px 0 0 17px;padding:0;list-style:none">'
+          + byKindItems[c.kind].map(function (it) {
+              var ref = (it.study || it.ref || '').toString();
+              var label = _esc((it.title || it.ref || it.kind || '').toString());
+              // Surface the CONCRETE issue (detail) + what to do (action_hint),
+              // not just a link — e.g. "composite not found in registry: <ref>".
+              var detail = it.detail ? _esc(it.detail.toString()) : '';
+              var hint = it.action_hint ? _esc(it.action_hint.toString()) : '';
+              var studyTag = (it.study && it.title && it.title.indexOf(it.study) < 0)
+                ? ' <span class="muted" style="font-size:0.85em">· ' + _esc(it.study) + '</span>' : '';
+              return '<li style="margin-top:4px;font-size:0.9em;line-height:1.28">'
+                + (ref
+                    ? '<a href="#" onclick="_openStudyInsideInvestigation(\'' + _esc(ref) + '\',\'conclusions\');return false;" style="color:#2563eb;text-decoration:none">' + label + ' →</a>'
+                    : label) + studyTag
+                + (detail ? '<span style="color:#475569;word-break:break-word"> — ' + detail + '</span>' : '')
+                + (hint ? '<span style="color:#aab4c0;font-size:0.92em"> · ' + hint + '</span>' : '')
+                + '</li>';
+            }).join('')
+          + '</ul>';
+      }
+      return '<li style="margin-top:5px"' + (help ? ' title="' + _esc(help) + '"' : '') + '>'
+        + '<div style="display:flex;gap:8px;align-items:flex-start;justify-content:space-between">'
+          + '<span style="display:flex;gap:8px;align-items:flex-start">'
+            + '<span style="color:' + (flagged ? '#b45309' : '#16a34a') + ';font-weight:700;flex:none">' + (flagged ? '•' : '✓') + '</span>'
+            + '<span style="border-bottom:1px dotted #cbd5e1;cursor:help">' + _esc(c.label || c.kind) + '</span>'
+          + '</span>'
+          + metric
+        + '</div>' + sub
+        + '</li>';
+    }).join('');
+    var clear = total === 0;
+    var pop = document.createElement('div');
+    pop.id = 'aig-allclear-pop';
+    pop.setAttribute('role', 'dialog');
+    pop.setAttribute('aria-label', 'Needs-attention scan');
+    pop.style.cssText = 'position:absolute;z-index:80;background:#fff;border:1px solid #e2e8f0;border-radius:8px;'
+      + 'box-shadow:0 8px 28px rgba(0,0,0,0.16);padding:10px 12px;min-width:320px;max-width:440px;text-align:left;'
+      + 'max-height:78vh;overflow:auto;font-size:0.85em;color:#334155;line-height:1.32';
+    pop.innerHTML =
+      '<div style="display:flex;align-items:baseline;justify-content:space-between;gap:10px;margin-bottom:2px">'
+        + '<span style="font-weight:700;color:' + (clear ? '#166534' : '#b45309') + '">'
+          + (clear ? '✓ All clear' : '⚠ ' + total + ' need' + (total === 1 ? 's' : '') + ' attention') + '</span>'
+        + (memberCount != null ? '<span class="muted" style="font-size:0.9em;white-space:nowrap">' + memberCount + ' member stud' + (memberCount === 1 ? 'y' : 'ies') + ' scanned</span>' : '')
+      + '</div>'
+      + '<ul style="margin:4px 0 0;padding:0;list-style:none">' + rows + '</ul>'
+      + '<div style="margin-top:9px;padding-top:7px;border-top:1px solid #f1f5f9">'
+        + '<a href="#" onclick="window._aigOpenDecisionsTab&&window._aigOpenDecisionsTab();return false;" '
+        + 'style="color:#2563eb;text-decoration:none;font-size:0.92em">What are these checks? Open the Decisions tab →</a>'
+      + '</div>';
+    document.body.appendChild(pop);
+    var r = anchor.getBoundingClientRect();
+    var top = Math.round(r.bottom + (window.scrollY || window.pageYOffset || 0) + 6);
+    var left = Math.round(Math.min(r.left + (window.scrollX || window.pageXOffset || 0),
+                                   (window.innerWidth - pop.offsetWidth - 8) + (window.scrollX || 0)));
+    pop.style.top = top + 'px';
+    pop.style.left = Math.max(8, left) + 'px';
+  }
+  window._aigShowAllClearInfo = _aigShowAllClearInfo;
+  // "What are these checks?" -> open the investigation's Decisions tab, where the
+  // needs-attention / decisions items live with their full context. Makes sure the
+  // investigation overview is expanded first so the brief tabs are visible.
+  window._aigOpenDecisionsTab = function () {
+    _aigCloseAllClearInfo();
+    try {
+      if (_invOverviewCollapsed && _invOverviewCollapsed()) _toggleInvOverview();
+    } catch (e) { /* ignore */ }
+    var open = function () {
+      var btn = document.querySelector('.inv-brief-tab[onclick*="decisions"]');
+      if (btn) { btn.click(); if (btn.scrollIntoView) { try { btn.scrollIntoView({ behavior: 'smooth', block: 'center' }); } catch (_) {} } }
+    };
+    // The brief tabs may need a beat to render after expanding the overview.
+    if (document.querySelector('.inv-brief-tab[onclick*="decisions"]')) open();
+    else setTimeout(open, 60);
+  };
+  document.addEventListener('click', function (e) {
+    if (e.target.closest && (e.target.closest('#aig-allclear-pop') || e.target.closest('.aig-na-chip'))) return;
+    _aigCloseAllClearInfo();
+  }, true);
+
   function _renderInvNeedsAttention(name) {
     var container = document.getElementById('investigation-needs-attention');
-    if (!container) return;
-    container.innerHTML = '';
+    var chip = document.getElementById('aig-needs-attention-chip');
+    if (!container && !chip) return;
+    if (container) container.innerHTML = '';
+    if (chip) chip.innerHTML = '';
     var _fetch = fetch('/api/needs-attention?investigation=' + encodeURIComponent(name),
                        {headers: {Accept: 'application/json'}})
       .then(function(r) { return r.ok ? r.json() : null; });
     _fetch.then(function(d) {
       if (!d || !d.summary) return;
+      window._lastNeedsAttention = d;   // the all-clear popover reads this
       var lbl = '<span class="muted" style="font-size:0.85em">code-computed by the needs-attention scan (deterministic)</span>';
       var total = (d.summary.total) || 0;
       if (!total) {
-        // Quiet "nothing needs attention" state — not an empty dropdown.
-        container.innerHTML =
-          '<div class="needs-attention-banner" style="margin:10px 0 14px 0;padding:10px 14px;'
-          + 'background:#f0fdf4;border:1px solid #16a34a;border-left-width:5px;border-radius:6px;color:#166534">'
-          + '<strong>✓ Nothing needs attention</strong> ' + lbl + '</div>';
+        // All-clear: a compact chip — now CLICKABLE to explain what it means and
+        // show the (passing) checks behind it.
+        if (chip) chip.innerHTML =
+          '<button type="button" class="aig-na-chip aig-na-clear" onclick="window._aigShowAllClearInfo(this)" '
+          + 'title="Click to see what the needs-attention scan checked">✓ All clear</button>';
         return;
       }
       var bySev = d.summary.by_severity || {};
       var high = bySev.high || 0;
-      var head = '⚠ Needs attention — ' + high + ' high, ' + total + ' total';
-      // Human-readable name + which study tab a click should land on, per kind.
-      // These are follow-ups the deterministic scan flags — NOT app updates.
-      var _naKindMeta = {
-        diagnostic_branch_needed: {label: 'Diagnostic study needed', tab: 'conclusions'},
-        next_action_ready:        {label: 'Next action ready',        tab: 'conclusions'},
-        invariant_regression:     {label: 'Invariant regression',     tab: 'conclusions'},
-        uncovered_ac:             {label: 'Acceptance criterion uncovered', tab: 'tests'},
-        open_feedback:            {label: 'Open expert feedback',      tab: 'overview'}
-      };
-      var items = (d.items || []).map(function(it) {
-        var st = _naSeverityStyle(it.severity);
-        var ref = (it.study || it.ref || '').toString();
-        var kindRaw = (it.kind || '').toString();
-        var meta = _naKindMeta[kindRaw] || {label: kindRaw.replace(/_/g, ' '), tab: 'conclusions'};
-        var refHtml = ref ? '<code>' + _esc(ref) + '</code>' : '<span class="muted">—</span>';
-        var hint = it.action_hint ? ' &nbsp;·&nbsp; ' + _esc(it.action_hint.toString()) : '';
-        var titleLine = it.title
-          ? '<div style="font-size:0.9em;margin-top:2px">' + _esc(it.title.toString()) + '</div>'
-          : '';
-        // Clickable when the item names a study: open it at the relevant tab
-        // (verdict-based items → the conclusions/Decide tab).
-        var open = ref
-          ? ' role="button" tabindex="0" onclick="_openStudyInsideInvestigation(\'' + _esc(ref) + '\',\'' + meta.tab + '\')"'
-            + ' onkeydown="if(event.key===\'Enter\'||event.key===\' \'){event.preventDefault();this.click();}"'
-            + ' title="Open study &quot;' + _esc(ref) + '&quot; at its verdict"'
-          : '';
-        var arrow = ref ? '<span style="float:right;opacity:.55;font-size:0.9em">open →</span>' : '';
-        return '<li class="na-item' + (ref ? ' na-item-click' : '') + '"' + open
-          + ' style="margin-top:7px;padding:5px 8px 6px 10px;border-left:3px solid ' + st.bd + ';border-radius:4px'
-          + (ref ? ';cursor:pointer' : '') + '">'
-          + arrow
-          + '<span style="color:' + st.dot + ';font-weight:700">●</span> '
-          + '<strong style="font-size:0.9em">' + _esc(meta.label) + '</strong> &nbsp;·&nbsp; ' + refHtml + hint
-          + titleLine + '</li>';
-      }).join('');
-      var byKind = d.summary.by_kind || {};
-      var breakdown = Object.keys(byKind).sort(function(a, b) {
-        return (byKind[b] || 0) - (byKind[a] || 0);
-      }).map(function(k) {
-        var m = _naKindMeta[k];
-        return (byKind[k] || 0) + '× ' + _esc(m ? m.label : k.replace(/_/g, ' '));
-      }).join(' &nbsp;·&nbsp; ');
-      var sev = _naSeverityStyle(high ? 'high' : 'medium');
-      // Plain-language explainer so the panel is self-describing (the user asked
-      // "what ARE these?"): they're automated follow-ups, and each is clickable.
-      var explain = '<div class="muted" style="font-size:0.84em;margin:2px 14px 4px;line-height:1.45">'
-        + 'Automated checks (no AI) that flag studies needing a follow-up — e.g. a study whose '
-        + 'verdict is <em>failed</em> or <em>needs-calibration</em> but has no diagnostic study seeded '
-        + 'to investigate why. Not app updates. <strong>Click any item</strong> to open that study at the verdict.</div>';
-      container.innerHTML =
-        '<details class="needs-attention-banner" style="margin:10px 0 14px 0;background:' + sev.bg
-        + ';border:1px solid ' + sev.bd + ';border-left-width:5px;border-radius:6px;color:' + sev.col + '">'
-        + '<summary style="padding:10px 14px;cursor:pointer;list-style:none;outline:none">'
-        + '<strong>' + head + '</strong>'
-        + '<span class="na-toggle-hint" style="opacity:.6;font-style:italic;font-size:0.85em;margin-left:8px">— click to expand</span>'
-        + (breakdown ? '<div class="muted" style="font-size:0.82em;margin-top:5px">' + breakdown + '</div>' : '')
-        + '</summary>'
-        + explain
-        + '<ul style="margin:4px 0 12px 0;padding:0 14px 0 18px;list-style:none;font-size:0.92em">'
-        + items + '</ul>'
-        + '</details>';
-    }).catch(function() { /* tolerant — leave the panel empty */ });
+      // Compact clickable chip in the toolbar — the SOLE needs-attention surface.
+      // Clicking it opens the rich scan popover (per-check counts + drill-in per
+      // flagged item); there is no longer a duplicate in-body banner.
+      if (chip) chip.innerHTML =
+        '<button type="button" class="aig-na-chip aig-na-flag' + (high ? ' aig-na-high' : '') + '" '
+        + 'onclick="window._aigShowAllClearInfo(this)" '
+        + 'title="' + high + ' high · ' + total + ' total — click for details">⚠ ' + total
+        + ' need' + (total === 1 ? 's' : '') + ' attention</button>';
+      // The flagged items + per-check breakdown render inside the chip's popover
+      // (window._aigShowAllClearInfo, which reads window._lastNeedsAttention set
+      // above). No in-body banner is drawn — the chip is the single surface.
+    }).catch(function() { /* tolerant — leave the chip empty */ });
   }
   window._renderInvNeedsAttention = _renderInvNeedsAttention;
 
@@ -9999,10 +11740,10 @@
     apiFetch('POST', '/api/investigation-rerun', { investigation: name }).then(function(r) {
       return r.json().then(function(j) { return { ok: r.ok, body: j, status: r.status }; });
     }).then(function(res) {
-      if (btn) { btn.disabled = false; btn.textContent = '▶ Run current spec'; }
+      if (btn) { btn.disabled = false; btn.textContent = '▶'; }
       if (!res.ok) {
         var errMsg = 'Rerun failed: ' + ((res.body && res.body.error) || res.status);
-        if (typeof _showToast === 'function') _showToast(errMsg); else alert(errMsg);
+        if (typeof _showToast === 'function') _showToast(errMsg, { danger: true }); else alert(errMsg);
         if (panel) panel.innerHTML = '<div class="inv-run-progress-banner inv-run-error">' + _h(errMsg) + '</div>';
         return;
       }
@@ -10029,9 +11770,9 @@
         setTimeout(function() { _openInvestigationDetail(name); }, 500);
       }
     }).catch(function(err) {
-      if (btn) { btn.disabled = false; btn.textContent = '▶ Run current spec'; }
+      if (btn) { btn.disabled = false; btn.textContent = '▶'; }
       var netMsg = 'Network error: ' + err;
-      if (typeof _showToast === 'function') _showToast(netMsg); else alert(netMsg);
+      if (typeof _showToast === 'function') _showToast(netMsg, { danger: true }); else alert(netMsg);
       if (panel) panel.innerHTML = '<div class="inv-run-progress-banner inv-run-error">' + _h(netMsg) + '</div>';
     });
   }
@@ -10163,28 +11904,499 @@
         for (var k in entry) { if (entry.hasOwnProperty(k)) e[k] = entry[k]; }
         if (!e.condition) e.condition = 'tests-passed';
         if (!e.relation) {
-          e.relation = (e.outputs_used && e.outputs_used.length) ? 'model-input' : 'leads-to';
+          // A synthesized dependency edge (interface input / prerequisite) is a
+          // "builds on" relation by default; an authored parent_relations entry
+          // can retype it to tests / motivates / alternative-to.
+          e.relation = 'builds-on';
         }
         out.push(e);
       }
     });
     return out;
   }
-  // W13 — edge-relation vocabulary → stroke styling + legend label.
+  // Four canonical edge relations → stroke styling + legend label. `arrow:false`
+  // renders undirected (alternative-to is a symmetric "competing approaches" tie,
+  // not a direction). Legacy relations are alias-mapped in _dagRelStyle.
   var _DAG_REL_STYLE = {
-    'leads-to':             { color: '#94a3b8', dash: null,  label: 'leads to' },
-    'model-input':          { color: '#2563eb', dash: null,  label: 'model input' },
-    'evidence':             { color: '#0d9488', dash: '5 3', label: 'evidence' },
-    'calibrates-threshold': { color: '#ca8a04', dash: '2 3', label: 'calibrates threshold' },
-    'refutes-alternative':  { color: '#dc2626', dash: '5 3', label: 'refutes alternative' },
+    'builds-on':      { color: '#2563eb', dash: null,  label: 'builds on',      arrow: true },
+    'tests':          { color: '#9333ea', dash: '7 3', label: 'tests',          arrow: true },
+    'motivates':      { color: '#d97706', dash: '2 4', label: 'motivates',      arrow: true },
+    'alternative-to': { color: '#64748b', dash: '1 4', label: 'alternative to', arrow: false },
+  };
+  var _DAG_REL_ALIASES = {
+    'leads-to': 'builds-on', 'leads to': 'builds-on',
+    'model-input': 'builds-on', 'model input': 'builds-on',
+    'evidence': 'builds-on', 'calibrates-threshold': 'builds-on', 'regulatory': 'builds-on',
+    'refutes': 'tests', 'refutes-alternative': 'tests',
+    'precedes': 'motivates', 'alternative': 'alternative-to',
   };
   function _dagRelStyle(rel) {
-    // Map legacy aliases onto the canonical vocabulary.
-    if (rel === 'regulatory') rel = 'calibrates-threshold';
-    if (rel === 'refutes')    rel = 'refutes-alternative';
-    if (rel === 'leads to')   rel = 'leads-to';
-    return _DAG_REL_STYLE[rel] || _DAG_REL_STYLE['leads-to'];
+    rel = String(rel || '').trim().toLowerCase();
+    rel = _DAG_REL_ALIASES[rel] || rel;
+    return _DAG_REL_STYLE[rel] || _DAG_REL_STYLE['builds-on'];
   }
+
+  // The investigation-graph legend (Progress / Verdict / Evidence / Edges),
+  // built from the same ontology tables the graph uses. Used to fill the "?"
+  // info-chip popover (it was previously an always-visible strip below the
+  // graph). Static content, so it can be rendered once.
+  function _buildDagLegendHtml() {
+    var _lg = function (color, icon, label) {
+      return '<span style="display:inline-flex;align-items:center;gap:4px;margin-right:14px">' +
+        '<span style="color:' + color + ';font-size:1em">' + icon + '</span>' +
+        '<span>' + label + '</span></span>';
+    };
+    var _edgeLg = function (rel) {
+      var st = _dagRelStyle(rel);
+      var line = 'border-bottom:2px ' + (st.dash ? 'dashed' : 'solid') + ' ' + st.color;
+      return '<span style="display:inline-flex;align-items:center;gap:5px;margin-right:12px">' +
+        '<span style="width:18px;' + line + ';display:inline-block;line-height:0">&nbsp;</span>' +
+        '<span>' + st.label + '</span></span>';
+    };
+    var _tierLg = function (tv) {
+      var m = _TIER_META[tv], pips = '';
+      for (var i = 0; i < 3; i++) pips += '<span style="color:' + (i < m.pips ? '#334155' : '#cbd5e1') + '">●</span>';
+      return '<span style="display:inline-flex;align-items:center;gap:5px;margin-right:12px">' +
+        '<span style="font-size:0.85em;letter-spacing:1px">' + pips + '</span><span>' + m.label + '</span></span>';
+    };
+    var row = function (label, items) {
+      return '<div style="margin-top:8px"><div style="font-weight:600;color:#475569;margin-bottom:3px">' +
+        label + '</div><div style="display:flex;flex-wrap:wrap;align-items:center">' + items + '</div></div>';
+    };
+    return '<div style="font-size:0.78em;color:#64748b;line-height:1.5">' +
+      row('Progress', Object.keys(_EXEC_META).map(function (k) { var m = _EXEC_META[k]; return _lg(m.color, m.icon, m.label); }).join('')) +
+      row('Verdict', Object.keys(_VERDICT_META).map(function (k) { var m = _VERDICT_META[k]; return _lg(m.color, m.icon, m.label); }).join('')) +
+      row('Evidence', Object.keys(_TIER_META).map(_tierLg).join('')) +
+      row('Edges', Object.keys(_DAG_REL_STYLE).map(_edgeLg).join('')) +
+      '</div>';
+  }
+
+  // Fill the "?" info-chip popover with the legend (once) and wire the chip to
+  // toggle it, closing on outside click — same dropdown pattern as the study
+  // navigator's jump menu.
+  function _wireDagLegendPopover() {
+    var chip = document.getElementById('dag-legend-chip');
+    var pop = document.getElementById('dag-legend-popover');
+    if (!chip || !pop) return;
+    if (!pop.dataset.filled) { pop.innerHTML = _buildDagLegendHtml(); pop.dataset.filled = '1'; }
+    if (chip.dataset.wired) return;
+    chip.dataset.wired = '1';
+    chip.addEventListener('click', function (ev) {
+      ev.stopPropagation();
+      var open = pop.style.display !== 'none' && pop.style.display !== '';
+      pop.style.display = open ? 'none' : 'block';
+      chip.setAttribute('aria-expanded', open ? 'false' : 'true');
+    });
+    document.addEventListener('click', function (e) {
+      if (!e.target.closest || !e.target.closest('.dag-legend-wrap')) {
+        pop.style.display = 'none'; chip.setAttribute('aria-expanded', 'false');
+      }
+    }, true);
+  }
+  window._wireDagLegendPopover = _wireDagLegendPopover;
+
+  // ── Collapse / expand the graph SHELL (persistent nav pane) ───────────────
+  // Hides #investigation-dag-shell (the DAG canvas) while keeping the toolbar +
+  // study navigator visible, so the user can still navigate and re-expand.
+  // Persisted per viewer in localStorage. Independent of the sticky pinning and
+  // of _setInvestigationContextCollapsed (which slims the whole context).
+  // The investigation graph is a DOCKABLE view while a study is embedded (CSS
+  // classes on #investigation-dag-fs, transitions in style.css):
+  //   collapsed — a slim corner bar (lead + study navigator), graph hidden;
+  //   docked    — a draggable/resizable floating window, top-right (the default),
+  //               with the navigator + Zoom/Detail/Width graph controls.
+  // The third control button (⛶) is an ACTION, not a state: it EXITS the study
+  // and returns to the full inline investigation graph. When NO study is open the
+  // graph is the normal full-width inline view (no dock class). The chosen state
+  // + the user's dragged position/size are remembered in localStorage.
+  var _AIG_DOCK_STATES = ['collapsed', 'docked'];
+  function _aigDockStateStored() {
+    try { var v = localStorage.getItem('aig-dock-state'); return _AIG_DOCK_STATES.indexOf(v) >= 0 ? v : null; }
+    catch (e) { return null; }
+  }
+  function _aigStudyOpen() { return !!(window._wsStudyTabs && window._wsStudyTabs.active); }
+
+  // Remembered dragged position + resized size of the docked window.
+  function _aigDockRectStored() {
+    try { return JSON.parse(localStorage.getItem('aig-dock-rect') || 'null'); } catch (e) { return null; }
+  }
+  function _aigSaveDockRect(fs) {
+    if (!fs || !fs.classList.contains('aig-dock-docked')) return;
+    try {
+      var r = fs.getBoundingClientRect();
+      localStorage.setItem('aig-dock-rect', JSON.stringify({
+        left: Math.round(r.left), top: Math.round(r.top),
+        width: Math.round(r.width), height: Math.round(r.height),
+      }));
+    } catch (e) { /* ignore */ }
+  }
+  // Apply the stored rect to the docked window, clamped inside the viewport.
+  function _aigApplyDockRect(fs) {
+    var rect = _aigDockRectStored();
+    if (!rect) return;
+    var vw = window.innerWidth || 1024, vh = window.innerHeight || 768;
+    var w = Math.max(260, Math.min(rect.width || 400, vw - 24));
+    var h = Math.max(140, Math.min(rect.height || 360, vh - 80));
+    var left = Math.max(8, Math.min(rect.left, vw - w - 8));
+    var top = Math.max(8, Math.min(rect.top, vh - h - 8));
+    fs.style.right = 'auto';
+    fs.style.left = left + 'px'; fs.style.top = top + 'px';
+    fs.style.width = w + 'px'; fs.style.height = h + 'px';
+  }
+  // Clear the inline rect so a non-docked state falls back to the CSS size/pos.
+  function _aigClearDockRect(fs) {
+    fs.style.left = ''; fs.style.top = ''; fs.style.right = '';
+    fs.style.width = ''; fs.style.height = '';
+  }
+
+  function _aigSetDockState(state, opts) {
+    // PREVIEW-ONLY: the bespoke floating inlay is superseded by the VivPanelDock
+    // Graph panel (graph-panel.js). Neuter the old auto-float so the two don't
+    // fight; the graph stays inline and the ◧ side-panel button drives docking.
+    return;
+    if (_AIG_DOCK_STATES.indexOf(state) < 0) state = 'docked';
+    var fs = document.getElementById('investigation-dag-fs');
+    if (!fs || !_aigStudyOpen()) return;   // docking only applies while embedded
+    fs.classList.add('aig-dock');
+    _AIG_DOCK_STATES.forEach(function (s) { fs.classList.toggle('aig-dock-' + s, s === state); });
+    // Docked: honor the user's dragged/resized rect; collapsed: use the CSS size.
+    if (state === 'docked') { _aigApplyDockRect(fs); _aigWireDockDrag(); _aigWireDockResize(); }
+    else { _aigClearDockRect(fs); }
+    var ctl = document.getElementById('aig-dock-ctl');
+    if (ctl) {
+      ctl.style.display = 'inline-flex';
+      ctl.querySelectorAll('button[data-dock]').forEach(function (b) {
+        b.classList.toggle('active', b.getAttribute('data-dock') === state);
+      });
+    }
+    if (!(opts && opts.noPersist)) { try { localStorage.setItem('aig-dock-state', state); } catch (e) { /* ignore */ } }
+    // Docked: show the graph at a READABLE zoom (names legible) and let the panel
+    // scroll — do NOT fit-all (which shrinks everything to tiny). A bigger window
+    // then shows more of the graph at the same readable size, rather than shrinking.
+    if (state === 'docked') {
+      setTimeout(function () { _aigDockReadable(); }, 210);
+    }
+  }
+  window._aigSetDockState = _aigSetDockState;
+
+  // Readable docked zoom: keep names legible (zoom = 1, the inline default) and
+  // scroll for the rest, instead of fit-all. The Zoom −/⤢/+ controls still let
+  // the user fit-all or zoom as they choose. (aigZoom / _applyAigZoom are defined
+  // later in this IIFE; this runs at interaction time, so they're available.)
+  function _aigDockReadable() {
+    try { aigZoom = 1; _applyAigZoom(); } catch (e) { /* ignore */ }
+  }
+
+  // Exit the embedded study and return to the full inline investigation graph —
+  // the ⛶ control's action (what closing the study / _wsResetStudyTabs restores).
+  function _aigExitToGraph() {
+    var inv = window._wsInvestigation || window._currentIset
+      || (window._wsStudyTabs && window._wsStudyTabs.investigation) || null;
+    _wsResetStudyTabs(inv);
+  }
+  window._aigExitToGraph = _aigExitToGraph;
+
+  // Float the graph on study open at the remembered state (default docked).
+  function _aigEnterDock() { _aigSetDockState(_aigDockStateStored() || 'docked', { noPersist: true }); }
+  // Restore the graph to the normal inline view on study close.
+  function _aigExitDock() {
+    var fs = document.getElementById('investigation-dag-fs');
+    if (fs) { fs.classList.remove('aig-dock', 'aig-dock-collapsed', 'aig-dock-docked'); _aigClearDockRect(fs); }
+    var ctl = document.getElementById('aig-dock-ctl');
+    if (ctl) ctl.style.display = 'none';
+  }
+  // Re-assert the dock state after a graph (re-)render: keep floating if a study
+  // is open, else ensure it's inline.
+  function _applyDockState() {
+    var fs = document.getElementById('investigation-dag-fs');
+    if (!fs) return;
+    if (!_aigStudyOpen()) { _aigExitDock(); return; }
+    var cur = _AIG_DOCK_STATES.filter(function (s) { return fs.classList.contains('aig-dock-' + s); })[0]
+      || _aigDockStateStored() || 'docked';
+    _aigSetDockState(cur, { noPersist: true });
+  }
+  window._applyDockState = _applyDockState;
+
+  // Collapsible "Investigation overview" (inline view, no study open). The prose
+  // blocks (#investigation-intro + #investigation-decision-cockpit) hide behind
+  // #inv-overview-toggle so the graph is prominent + top-aligned. DEFAULT
+  // COLLAPSED; the user's choice is remembered. Only governs the inline view —
+  // the study-open state hides the prose regardless.
+  function _invOverviewCollapsed() {
+    // Default OPEN: entering an investigation shows the overview at the top; it
+    // collapses when a study is opened.
+    try { var v = localStorage.getItem('inv-overview-collapsed'); return v === null ? false : v === '1'; }
+    catch (e) { return false; }
+  }
+  function _applyInvOverviewState() {
+    var view = document.getElementById('investigation-detail-view');
+    if (!view) return;
+    // Safeguard: the investigation overview (intro + decision cockpit) must sit
+    // ABOVE the graph. The template already orders them that way, but enforce it
+    // defensively so no state (or a stale cached fragment) can leave the graph
+    // rendered above the overview — the overview opens below the graph otherwise.
+    // Idempotent: a no-op when the order is already correct.
+    var _graph = document.getElementById('investigation-dag-fs');
+    var _intro = document.getElementById('investigation-intro');
+    var _cockpit = document.getElementById('investigation-decision-cockpit');
+    if (_graph && _intro && _intro.parentNode === view && _graph.parentNode === view &&
+        (_intro.compareDocumentPosition(_graph) & Node.DOCUMENT_POSITION_PRECEDING)) {
+      view.insertBefore(_intro, _graph);
+      if (_cockpit && _cockpit.parentNode === view) view.insertBefore(_cockpit, _graph);
+    }
+    var collapsed = _invOverviewCollapsed();
+    view.classList.toggle('inv-overview-collapsed', collapsed);
+    var btn = document.getElementById('inv-overview-toggle');
+    if (btn) {
+      // Keep the "Overview" text label beside the caret (iTerm-style labeled
+      // control); only the caret direction reflects collapsed/expanded.
+      btn.innerHTML = '<span class="inv-ov-caret" aria-hidden="true">' + (collapsed ? '▸' : '▾') + '</span> Overview';
+      btn.setAttribute('title', collapsed ? 'Show overview' : 'Hide overview');
+      btn.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
+    }
+  }
+  function _toggleInvOverview() {
+    var willOpen = _invOverviewCollapsed();   // currently collapsed -> this click opens it
+    try { localStorage.setItem('inv-overview-collapsed', willOpen ? '0' : '1'); } catch (e) { /* ignore */ }
+    _applyInvOverviewState();
+    // On open, bring the revealed overview (which sits ABOVE the graph in the DOM)
+    // into view — it works whether or not a study is open (the CSS un-hides the
+    // intro/cockpit in the study-open state when expanded).
+    if (willOpen) {
+      var intro = document.getElementById('investigation-intro');
+      if (intro && intro.scrollIntoView) { try { intro.scrollIntoView({ behavior: 'smooth', block: 'start' }); } catch (e) { /* ignore */ } }
+    }
+  }
+  window._toggleInvOverview = _toggleInvOverview;
+  window._applyInvOverviewState = _applyInvOverviewState;
+
+  // Drag the docked window by its TOOLBAR (the popup has no title bar now): drag
+  // empty toolbar space, not the buttons/sliders/menus. Persists position/size
+  // (resize uses the corner grips; a document mouseup saves the final rect).
+  // Wired once; only acts in the docked state. Kept inside the viewport.
+  var _aigDockDragWired = false;
+  function _aigWireDockDrag() {
+    if (_aigDockDragWired) return;
+    _aigDockDragWired = true;
+    var fs = document.getElementById('investigation-dag-fs');
+    var bar = fs && fs.querySelector('.aig-toolbar');
+    if (!fs || !bar) return;
+    // Transform-based drag: translate() is a compositor-only transform, so the
+    // heavy graph panel is NOT re-laid-out or repainted on every mousemove the
+    // way writing left/top each event was (that was the drag lag). We batch the
+    // transform write into one rAF per frame, then commit to left/top on release.
+    var drag = null, raf = 0, pending = null;
+    function flush() {
+      raf = 0;
+      if (drag && pending) { fs.style.transform = 'translate(' + pending.x + 'px,' + pending.y + 'px)'; }
+    }
+    bar.addEventListener('mousedown', function (e) {
+      if (!fs.classList.contains('aig-dock-docked')) return;      // only docked
+      // Ignore the interactive controls — drag only on empty toolbar space.
+      if (e.target.closest && e.target.closest('button, input, select, a, .aig-tb-seg, .aig-study-jump-wrap, #aig-dock-ctl, #aig-study-nav')) return;
+      var r = fs.getBoundingClientRect();
+      // Pin left/top to the current numeric position so the transform offsets
+      // from a known origin (the panel may still be on its CSS right:16px).
+      fs.style.right = 'auto'; fs.style.left = r.left + 'px'; fs.style.top = r.top + 'px';
+      drag = { sx: e.clientX, sy: e.clientY, left: r.left, top: r.top, w: r.width, h: r.height };
+      pending = { x: 0, y: 0 };
+      fs.classList.add('aig-dragging');          // suppress transition while dragging
+      fs.style.willChange = 'transform';
+      e.preventDefault();
+    });
+    document.addEventListener('mousemove', function (e) {
+      if (!drag) return;
+      var vw = window.innerWidth, vh = window.innerHeight;
+      // Clamp the DESTINATION (base + delta) to the viewport, express as a delta.
+      var destLeft = Math.max(8, Math.min(drag.left + (e.clientX - drag.sx), vw - drag.w - 8));
+      var destTop = Math.max(8, Math.min(drag.top + (e.clientY - drag.sy), vh - drag.h - 8));
+      pending = { x: destLeft - drag.left, y: destTop - drag.top };
+      if (!raf) raf = requestAnimationFrame(flush);
+    });
+    document.addEventListener('mouseup', function () {
+      if (!drag) return;
+      if (raf) { cancelAnimationFrame(raf); raf = 0; }
+      // Commit the transform offset into left/top, then drop the transform.
+      fs.style.left = (drag.left + pending.x) + 'px';
+      fs.style.top = (drag.top + pending.y) + 'px';
+      fs.style.transform = ''; fs.style.willChange = '';
+      drag = null; pending = null;
+      fs.classList.remove('aig-dragging');
+      if (fs.classList.contains('aig-dock-docked')) _aigSaveDockRect(fs);
+    });
+  }
+
+  // Resize the docked window by dragging a corner grip (custom, since CSS
+  // `resize` was unreliable on this fixed+transitioned panel and the grip sat
+  // under the graph shell). Sets inline width/height (and left on the SW grip),
+  // clamped to a sane minimum and within the viewport; persists + re-fits on
+  // release. Wired once; only acts in the docked state.
+  var _aigDockResizeWired = false;
+  function _aigWireDockResize() {
+    if (_aigDockResizeWired) return;
+    _aigDockResizeWired = true;
+    var fs = document.getElementById('investigation-dag-fs');
+    if (!fs) return;
+    var grips = fs.querySelectorAll('.aig-dock-grip');
+    if (!grips.length) return;
+    var rz = null;
+    var MINW = 320, MINH = 240;
+    grips.forEach(function (g) {
+      g.addEventListener('mousedown', function (e) {
+        if (!fs.classList.contains('aig-dock-docked')) return;
+        e.preventDefault(); e.stopPropagation();
+        var r = fs.getBoundingClientRect();
+        rz = { dir: g.getAttribute('data-grip'), x: e.clientX, y: e.clientY, left: r.left, top: r.top, w: r.width, h: r.height };
+        fs.classList.add('aig-resizing');
+        fs.style.right = 'auto';
+      });
+    });
+    document.addEventListener('mousemove', function (e) {
+      if (!rz) return;
+      var vw = window.innerWidth, vh = window.innerHeight;
+      var dx = e.clientX - rz.x, dy = e.clientY - rz.y;
+      var w, h = rz.h + dy, left = rz.left;
+      if (rz.dir === 'sw') { w = rz.w - dx; left = rz.left + dx; }
+      else { w = rz.w + dx; }                     // 'se'
+      if (w < MINW) { if (rz.dir === 'sw') left = rz.left + (rz.w - MINW); w = MINW; }
+      if (h < MINH) h = MINH;
+      left = Math.max(8, left);
+      if (left + w > vw - 8) w = vw - 8 - left;
+      var top = Math.max(56, rz.top);
+      if (top + h > vh - 8) h = vh - 8 - top;
+      fs.style.left = left + 'px'; fs.style.top = top + 'px';
+      fs.style.width = w + 'px'; fs.style.height = h + 'px';
+    });
+    document.addEventListener('mouseup', function () {
+      if (!rz) return;
+      rz = null; fs.classList.remove('aig-resizing');
+      if (fs.classList.contains('aig-dock-docked')) _aigSaveDockRect(fs);
+      // Keep the current (readable) zoom — a bigger window just shows MORE graph,
+      // it does not shrink. (No fit-all here.)
+    });
+  }
+
+  // Graph-only vs full investigation detail. When a study is open, the relocated
+  // #investigation-detail-view is reduced to its graph region (#investigation-dag-fs)
+  // via the .inv-study-open class (CSS hides every other direct child) so the
+  // sticky pane is compact and the study stays reachable. Restoring removes the
+  // class — each child returns to its own inline/default display.
+  var _invStripPrevBand = null;
+  function _setInvProseForStudy(studyOpen) {
+    var view = document.getElementById('investigation-detail-view');
+    if (!view) return;
+    view.classList.toggle('inv-study-open', !!studyOpen);
+    // Compact navigation strip when a study is open: the graph shell is capped
+    // to a short height by CSS (.inv-study-open #investigation-dag-shell), which
+    // beats the inline height + the auto-refit. Here we only drop the semantic
+    // zoom to the lowest band (just study names) and restore the prior band on
+    // close, so the strip reads as a nav menu rather than a tall section.
+    if (studyOpen) {
+      if (_invStripPrevBand === null) _invStripPrevBand = aigBand;
+      _setAigBand(0);   // lowest detail — names only
+    } else if (_invStripPrevBand !== null) {
+      _setAigBand(_invStripPrevBand);
+      _invStripPrevBand = null;
+    }
+  }
+  window._setInvProseForStudy = _setInvProseForStudy;
+
+  // ── Graph-bar study navigator ─────────────────────────────────────────────
+  // ← prev / ⇄ jump / next → that navigates the EMBEDDED study, driven from the
+  // graph's OWN data (_lastDagArgs = [studies, chainsBySlug, studyEdges]) — no
+  // re-fetch. Mirrors study-detail.js _wireStudyNav's chain logic (prev/next
+  // along the leads-to chain + a grouped jump menu), but swaps the embedded
+  // study via _openStudyEmbeddedNewTab. Shown only while a study is open.
+  var _aigJumpWired = false;
+  function _renderGraphBarNav() {
+    var nav = document.getElementById('aig-study-nav');
+    if (!nav) return;
+    var current = (window._wsStudyTabs && window._wsStudyTabs.active) || null;
+    var studies = (_lastDagArgs && _lastDagArgs[0]) || [];
+    var edges = (_lastDagArgs && _lastDagArgs[2]) || [];
+    if (!current || !studies.length) { nav.style.display = 'none'; return; }
+
+    var strip = function (n) { return String(n == null ? '' : n).trim(); };
+    var nameOf = function (s) { return (typeof s === 'string') ? s : (s && (s.name || s.slug || s.study)); };
+    var titleOf = function (s) { return (s && typeof s === 'object' && s.title) ? s.title : nameOf(s); };
+    var order = studies.map(nameOf).filter(Boolean);
+    if (!order.length) { nav.style.display = 'none'; return; }
+    var byName = {}; studies.forEach(function (s) { var n = nameOf(s); if (n) byName[n] = s; });
+
+    // Parents/children from the graph edges (source -> target == leads-to),
+    // falling back to each study's parent_studies — same chain the graph draws.
+    var parentsOf = function (n) {
+      var out = [];
+      edges.forEach(function (e) { if (e && strip(e.target) === n && strip(e.source)) out.push(strip(e.source)); });
+      var s = byName[n], ps = (s && s.parent_studies) || [];
+      ps.forEach(function (pk) {
+        var pn = (pk && typeof pk === 'object') ? (pk.study || pk.name || pk.slug) : pk;
+        if (pn && out.indexOf(strip(pn)) === -1) out.push(strip(pn));
+      });
+      return out.filter(function (x) { return byName[x]; });
+    };
+    var childrenOf = function (n) {
+      var out = [];
+      edges.forEach(function (e) { if (e && strip(e.source) === n && strip(e.target) && byName[strip(e.target)]) out.push(strip(e.target)); });
+      order.forEach(function (m) { if (parentsOf(m).indexOf(n) >= 0 && out.indexOf(m) === -1) out.push(m); });
+      return out;
+    };
+
+    var curParents = parentsOf(current);
+    var curChildren = childrenOf(current);
+    var idx = order.indexOf(current);
+    var prev = (idx > 0) ? order[idx - 1] : (curParents[0] || null);
+    var next = curChildren[0] || ((idx >= 0 && idx < order.length - 1) ? order[idx + 1] : null);
+
+    var prevBtn = document.getElementById('aig-study-prev');
+    var nextBtn = document.getElementById('aig-study-next');
+    var jumpBtn = document.getElementById('aig-study-jump-btn');
+    var jumpMenu = document.getElementById('aig-study-jump-menu');
+    nav.style.display = '';
+
+    var go = function (slug) { if (slug && slug !== current && window._openStudyEmbeddedNewTab) window._openStudyEmbeddedNewTab(slug, (typeof _currentStudyTab === 'function' ? _currentStudyTab() : undefined)); };
+    if (prevBtn) {
+      prevBtn.disabled = !prev; prevBtn.title = prev ? ('Previous: ' + prev) : 'No previous study';
+      prevBtn.onclick = prev ? function () { go(prev); } : null;
+    }
+    if (nextBtn) {
+      nextBtn.disabled = !next; nextBtn.title = next ? ('Next: ' + next) : 'No next study';
+      nextBtn.onclick = next ? function () { go(next); } : null;
+    }
+
+    if (jumpMenu && jumpBtn) {
+      var _item = function (n) {
+        return '<button type="button" class="aig-study-jump-item' + (n === current ? ' current' : '') +
+          '" data-slug="' + _esc(n) + '">' + _esc(titleOf(byName[n]) || n) + '</button>';
+      };
+      var html = '';
+      if (curParents.length) html += '<div class="aig-study-jump-group">Builds on</div>' + curParents.map(_item).join('');
+      if (curChildren.length) html += '<div class="aig-study-jump-group">Leads to</div>' + curChildren.map(_item).join('');
+      html += '<div class="aig-study-jump-group">All studies</div>' + order.map(_item).join('');
+      jumpMenu.innerHTML = html;
+      jumpMenu.querySelectorAll('.aig-study-jump-item').forEach(function (b) {
+        b.addEventListener('click', function () {
+          jumpMenu.style.display = 'none'; jumpBtn.setAttribute('aria-expanded', 'false');
+          go(b.getAttribute('data-slug'));
+        });
+      });
+      jumpBtn.onclick = function (ev) {
+        ev.stopPropagation();
+        var open = jumpMenu.style.display !== 'none' && jumpMenu.style.display !== '';
+        jumpMenu.style.display = open ? 'none' : 'block';
+        jumpBtn.setAttribute('aria-expanded', open ? 'false' : 'true');
+      };
+      if (!_aigJumpWired) {
+        _aigJumpWired = true;
+        document.addEventListener('click', function (e) {
+          if (!e.target.closest || !e.target.closest('.aig-study-jump-wrap')) {
+            jumpMenu.style.display = 'none'; jumpBtn.setAttribute('aria-expanded', 'false');
+          }
+        }, true);
+      }
+    }
+  }
+  window._renderGraphBarNav = _renderGraphBarNav;
 
   // Layout + render the DAG of study nodes for the active investigation.
   // Two orientations, chosen by chooseGraphOrientation() (aig-graph.js) or a
@@ -10202,19 +12414,58 @@
   // with the node as target. The buttons carry class `js-authoring` so they
   // hide automatically in the published snapshot and live read-only modes.
 
+  // Full-magnification "Plan" layer (semantic-zoom band 2 / _opts.plan): the
+  // design a study DECLARES before any composite is built — declared contract
+  // (typed-ports summary + conservation predicates), proposed mechanisms,
+  // proposed models & methods, and the success criteria. Each sub-block is
+  // omitted when empty; lists are capped (+ "…") so a node can't explode.
+  function _dagPlanHtml(s) {
+    var _cl = function (n) {
+      return 'display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:' + n +
+        ';line-clamp:' + n + ';overflow:hidden;';
+    };
+    var mech = Array.isArray(s.proposed_mechanisms) ? s.proposed_mechanisms : [];
+    var meth = Array.isArray(s.proposed_models_methods) ? s.proposed_models_methods : [];
+    var tests = Array.isArray(s.behavior_test_names) ? s.behavior_test_names : [];
+    var contract = s.contract || {};
+    var face = contract.face || {};
+    var ins = face.inputs || {}, outs = face.outputs || {};
+    var nIn = Object.keys(ins).length, nOut = Object.keys(outs).length;
+    var conds = Array.isArray(contract.conditions) ? contract.conditions : [];
+    var parts = [];
+    if (nIn || nOut || conds.length) {
+      var portBits = [];
+      Object.keys(ins).concat(Object.keys(outs)).forEach(function (n) {
+        var ports = ins[n] ? ins : outs;
+        var u = (ports[n] || {})._units;
+        portBits.push(n + (u ? ' (' + u + ')' : ''));
+      });
+      var portStr = portBits.slice(0, 5).map(_esc).join(', ') + (portBits.length > 5 ? ', …' : '');
+      var summary = nIn + ' in → ' + nOut + ' out · ' + conds.length +
+        ' predicate' + (conds.length === 1 ? '' : 's');
+      parts.push('<div><span style="font-weight:600;color:#475569">Contract:</span> ' + _esc(summary) +
+        (portStr ? '<div class="muted" style="' + _cl(2) + '">' + portStr + '</div>' : '') + '</div>');
+    }
+    var listBlock = function (label, arr, cap) {
+      if (!arr.length) return '';
+      var shown = arr.slice(0, cap).map(function (x) { return _esc(String(x)); }).join('; ');
+      return '<div style="margin-top:3px;' + _cl(3) + '"><span style="font-weight:600;color:#475569">' +
+        label + ':</span> ' + shown + (arr.length > cap ? ' …' : '') + '</div>';
+    };
+    parts.push(listBlock('Mechanisms', mech, 4));
+    parts.push(listBlock('Models &amp; methods', meth, 4));
+    parts.push(listBlock('Success criteria', tests, 5));
+    var body = parts.filter(Boolean).join('');
+    if (!body) return '';
+    return '<div class="dag-plan-layer" style="font-size:0.7em;margin-top:7px;padding-top:6px;' +
+      'border-top:1px dashed #e2e8f0;color:#64748b;line-height:1.35">' + body + '</div>';
+  }
+
   function _dagCacheBadgeHtml(slug) {
-    var st = _dagTriggerBySlug[slug];
-    if (!st) return '';
-    var cached = !!st.cached;
-    var bg = cached ? '#dcfce7' : '#f1f5f9';
-    var fg = cached ? '#166534' : '#475569';
-    var label = cached ? '● cached' : '○ compute';
-    var tip = cached
-      ? 'Output artifact is in the store — this study is pulled, not recomputed'
-      : 'No cached artifact — this study computes when triggered';
-    return '<span class="dag-cache-badge" title="' + _esc(tip) + '" ' +
-      'style="display:inline-block;font-size:0.62em;font-weight:700;padding:1px 7px;' +
-      'border-radius:9999px;background:' + bg + ';color:' + fg + '">' + label + '</span>';
+    // The cached/compute badge ("● cached" / "○ compute") was removed from the
+    // graph cards — it carried no useful signal for browsing. Kept as a no-op so
+    // existing call sites need no change.
+    return '';
   }
 
   function _dagTriggerControlsHtml(slug) {
@@ -10226,32 +12477,15 @@
     return '';
   }
 
-  // Download affordances for a graph study card: ↓ figures (this study's own
-  // figures) + ↓ notebook (the parent investigation's runnable notebook). Unlike
-  // the run/continue controls these are NOT authoring-gated — they survive into
-  // the read-only snapshot so shared links can still grab figures. Deliberately
-  // no ▶ run here: the small card stays uncluttered; running lives on the full
-  // study tab.
+  // The graph study cards intentionally carry NO download affordances anymore
+  // (↓ figures / ↓ notebook). Downloads now live prominently at the top of the
+  // full study tab (study-detail.html's header: ↓ figures / ↓ notebook) — one
+  // easy-access place instead of one per node, so the investigation graph stays
+  // clean. The run/continue launch actions were likewise moved to the study tab
+  // (see _dagTriggerControlsHtml). Kept as a no-op so existing call sites need
+  // no change.
   function _dagDownloadControlsHtml(slug) {
-    var lnk = 'font-size:0.66em;color:#3b82f6;text-decoration:none;white-space:nowrap';
-    // Show "↓ figures" only when the study actually has downloadable figures.
-    // The per-study status (from /api/investigation-trigger-status) carries
-    // has_figures; hide the link ONLY on an explicit false so that when the
-    // status is unavailable (snapshot bundle / fetch failed → no entry) we keep
-    // showing it rather than hiding a real download. ↓ notebook is always
-    // generatable, so it stays unconditional.
-    var _st = _dagTriggerBySlug[slug];
-    var _figures = (!_st || _st.has_figures !== false)
-      ? '<a href="#" title="Download this study\'s figures (and embedded HTML reports) as a zip" ' +
-          'onclick="window._vivStudyFiguresFromCard(event,\'' + _esc(slug) + '\');return false;" ' +
-          'style="' + lnk + '">↓ figures</a>'
-      : '';
-    return '<div class="dag-download-controls" style="display:flex;gap:12px;flex-wrap:wrap;margin-top:6px">' +
-      _figures +
-      '<a href="#" title="Download this study\'s own runnable notebook (composite + parameters + figures)" ' +
-        'onclick="window._vivStudyNotebookFromCard(event,\'' + _esc(slug) + '\',\'' + _esc(_dagInvSlug || '') + '\');return false;" ' +
-        'style="' + lnk + '">↓ notebook</a>' +
-      '</div>';
+    return '';
   }
 
   function _triggerStudy(slug, onMissing, btnEl) {
@@ -10307,6 +12541,9 @@
 
   function _renderInvestigationDag(studies, chainsBySlug, studyEdges) {
     _lastDagArgs = [studies, chainsBySlug, studyEdges];
+    // Assigned to _layoutAndDraw below; each card's expand toggle calls it to
+    // re-measure + re-stack its column after the card grows/shrinks.
+    var _relayoutDag = null;
     // Prefer the server's computed study_edges for dependency layout: in the
     // member-interface model the per-study `parent_studies` / `pipeline_gate`
     // (what _dagEdges reads) is empty because prerequisites are declared as
@@ -10320,7 +12557,7 @@
       (_edgesByChild[tgt] = _edgesByChild[tgt] || []).push({
         study: src,
         condition: e.condition || 'tests-passed',
-        relation: e.artifact ? 'model-input' : 'leads-to',
+        relation: e.relation || (e.artifact ? 'model-input' : 'leads-to'),
         artifact: e.artifact,
       });
     });
@@ -10332,6 +12569,9 @@
     var _opts = window._layoutOptsForBand(aigBand);
     var shellEl = document.getElementById('investigation-dag-shell');
     if (shellEl) { shellEl.classList.remove('aig-zoom-far','aig-zoom-mid','aig-zoom-near'); shellEl.classList.add(_opts.cls); }
+    // Keep the card-width slider showing the persisted scale on (re-)render.
+    var _wsl = document.getElementById('aig-width-slider');
+    if (_wsl && String(_wsl.value) !== String(aigWidthScale)) _wsl.value = String(aigWidthScale);
 
 
     var nodesHost = document.getElementById('investigation-dag-nodes');
@@ -10389,16 +12629,25 @@
       byDepth[d].sort(function(a, b) { return a.name.localeCompare(b.name); });
     });
 
-    // Orientation: auto-pick from the graph's shape (wide/shallow -> TB,
-    // deep/narrow -> LR) unless the user manually toggled it for this
-    // investigation, in which case the stored choice wins.
+    // Orientation. A transient MANUAL override (the ⇄/⇅ buttons, in-memory, held
+    // only within the current dock) wins; otherwise AUTO from the container aspect
+    // (_aigAutoOrient: dock side when docked, else the inline area's width≥height).
+    // The shape heuristic (chooseGraphOrientation) is a last-resort fallback for
+    // when nothing can be measured (e.g. a headless/test render). Auto is recomputed
+    // every render, so an initial load and every dock switch re-auto; a manual pick
+    // survives zoom/band re-renders because _aigManualOrient holds until the next
+    // dock switch clears it.
     var depthCounts = {};
     Object.keys(byDepth).forEach(function(d) { depthCounts[d] = byDepth[d].length; });
-    var _storedOrient = _getStoredGraphOrientation(window._currentIset);
-    var orient = _storedOrient ||
-      (window.chooseGraphOrientation ? window.chooseGraphOrientation(depthCounts) : 'LR');
+    var orient;
+    if (_aigManualOrient === 'LR' || _aigManualOrient === 'TB') {
+      orient = _aigManualOrient;
+    } else {
+      orient = _aigAutoOrient(depthCounts)
+        || (window.chooseGraphOrientation ? window.chooseGraphOrientation(depthCounts) : 'LR');
+    }
     if (shellEl) { shellEl.classList.remove('aig-orient-lr', 'aig-orient-tb'); shellEl.classList.add(orient === 'TB' ? 'aig-orient-tb' : 'aig-orient-lr'); }
-    _syncGraphOrientToggleUI(orient, !!_storedOrient);
+    _syncGraphOrientToggleUI(orient, _aigUserLayout);
 
     // Card HEIGHT is NOT fixed: each card grows to fit its full text. We render
     // once, measure each card, then stack + center by the measured heights
@@ -10407,8 +12656,12 @@
     //     dependency-depth axis — horizontal columns in LR, vertical rows in TB.
     //   - BREADTH_GAP (fixed): gap along the same-depth axis — vertical stack in
     //     LR, horizontal row in TB.
-    var CARD_W = _opts.cardW;
-    var DEPTH_GAP = _opts.xGap, BREADTH_GAP = 22;
+    // Card width is the band's cardW scaled by the viewer's width control, so
+    // cards can be widened/narrowed to read the Asks/Finds text independently of
+    // the zoom band. DEPTH_GAP widens a little with the cards so columns don't
+    // crowd; BREADTH_GAP (same-depth stacking) stays fixed.
+    var CARD_W = Math.round(_opts.cardW * aigWidthScale);
+    var DEPTH_GAP = Math.round(_opts.xGap * (1 + (aigWidthScale - 1) * 0.5)), BREADTH_GAP = 22;
     var PAD_X = 24, PAD_Y = 16;
     var svgNS = 'http://www.w3.org/2000/svg';
     var pos = {};
@@ -10450,8 +12703,17 @@
       // with the sidebar. Fixes the prior bug where `s.confidence || derive(...)` let
       // a drift-prone hand-set `confidence: Investigating` mask a `blocked` gate.
       // `Blocked` renders as its own state (slate ⊘), not as Refuted (red ✗).
-      var ss = _studyStatusMeta(s);
-      var confidence = ss.label;
+      // Two-axis ontology: PROGRESS (execution) and VERDICT (what the evidence
+      // supports) are shown as two prominent pills. The card color/border is the
+      // verdict color once the study is completed (the finding is the headline),
+      // else the execution-progress color.
+      var execMeta = _execMeta(s);
+      var isCompleted = _execState(s) === 'completed';
+      var verdictMeta = _verdictMeta(s);              // null → pending
+      var headColor = (isCompleted && verdictMeta) ? verdictMeta.color : execMeta.color;
+      var confidence = execMeta.label + (verdictMeta ? ' · ' + verdictMeta.label : '');
+      // Overview (far) band collapses the pills to glyphs only to stay readable.
+      var _pillCompact = !_opts.asks;
       var followUps = s.follow_up_studies || [];
 
       // Single display name everywhere: authored title:, else the shared
@@ -10461,7 +12723,10 @@
       // paragraph (e.g. pdmp-01), which blows the card up to fill the canvas —
       // so it's CSS line-clamped to a few lines below; the full text lives one
       // click away on the study page (and on hover via the node title).
-      var asks = (s.question || '').replace(/\s+/g, ' ').split(/[.?]/)[0].trim();
+      // At full magnification (_opts.asksFull) show the WHOLE question; at
+      // lower bands keep the first-sentence teaser so cards stay compact.
+      var _qFull = (s.question || '').replace(/\s+/g, ' ').trim();
+      var asks = _opts.asksFull ? _qFull : _qFull.split(/[.?]/)[0].trim();
       var findings = _asFindings(s.findings);
       var claim = (s.claim ||
         (findings[0] && (findings[0].summary || findings[0].statement || findings[0].id)) || ''
@@ -10476,20 +12741,56 @@
 
       var node = document.createElement('div');
       node.className = 'iset-dag-node';
-      // Single click opens the full study view directly — no quick-look
-      // side-card, no double-click.
-      node.onclick = function() {
-        _openStudyInsideInvestigation(s.name);
+      // Stamp the slug so _wsHighlightActiveDagNode can mark the node whose
+      // study is open in the detail panel below.
+      node.dataset.study = s.name;
+      // Three distinct gestures:
+      //   • first click on the card → SELECT only (highlight; no expand, no open).
+      //   • "… show full card" (the +N-more affordance) → EXPAND the card IN PLACE:
+      //     its top stays anchored and the full Asks/Finds/plan grow downward so
+      //     the card gets taller where it sits. Just a reader — it does NOT move
+      //     the "open" marker. Click again to collapse.
+      //   • second click on the selected card → OPEN it as the open study.
+      // A study can be both selected and open (then the "open" marker wins).
+      var _namesOnly = (aigBand === 0);
+      var _selectThis = function () {
+        if (window._aigSelected === s.name) return;
+        if (window._aigSelected) {
+          var prev = nodesHost.querySelector(
+            '.iset-dag-node[data-study="' + _aigCssEsc(window._aigSelected) + '"]');
+          if (prev) prev.classList.remove('aig-node-selected');
+        }
+        window._aigSelected = s.name;
+        node.classList.add('aig-node-selected');
       };
-      node.title = s.name + ' — ' + confidence + (claim ? '\n\nFinds: ' + claim : '') +
-        '\n\nClick to open the study';
+      var _aigNodeClick = function () {
+        if (window._aigSelected === s.name) {
+          _openStudyInsideInvestigation(s.name);   // second click opens
+          return;
+        }
+        _selectThis();                             // first click: select only
+      };
+      // "show full card" → select (if needed) + toggle the card's in-place
+      // expansion. Explicitly NOT an open: this gesture only reveals/hides the
+      // full detail, it never moves the open marker. The card's top-left stays
+      // anchored; the detail grows downward and the shell's scroll extent grows
+      // to match (see _aigAccommodateExpansion).
+      var _toggleExpandInPlace = function (ev) {
+        ev.stopPropagation();
+        _selectThis();
+        _aigSetNodeExpanded(node, !node.classList.contains('aig-node-expanded'));
+        _aigAccommodateExpansion();
+      };
+      node.onclick = _aigNodeClick;
+      node.title = s.name + ' — ' + confidence +
+        '\n\nClick to select · click again to open the study · "show full card" expands it in place';
       var x = (orient === 'TB')
         ? rowStartX[depth[s.name]] + breadthIndex[s.name] * (CARD_W + BREADTH_GAP)
         : PAD_X + depth[s.name] * (CARD_W + DEPTH_GAP);
       node.style.cssText =
         'position:absolute;left:' + x + 'px;top:0px;' +
         'width:' + CARD_W + 'px;' +
-        'background:#fff;border:1px solid #e5e7eb;border-top:3px solid ' + ss.color + ';' +
+        'background:#fff;border:1px solid #e5e7eb;border-top:3px solid ' + headColor + ';' +
         'border-radius:8px;padding:10px 12px;cursor:pointer;box-sizing:border-box;' +
         'box-shadow:0 1px 2px rgba(0,0,0,0.05);transition:box-shadow 0.1s,border-color 0.1s;';
 
@@ -10503,43 +12804,77 @@
           '</button>';
       }
       node.innerHTML =
-        // Meta row: icon (left) + status badge (right). The badge is alone on
-        // this row with space-between, so a nowrap label can never overflow the
-        // card. The title then spans the FULL card width on its own line below
-        // (no longer squeezed into a thin flex column beside the badge).
-        '<div style="display:flex;align-items:center;justify-content:space-between;gap:6px;margin-bottom:5px">' +
-          '<span style="color:' + ss.color + ';font-size:1.05em;line-height:1;flex:none">' + ss.icon + '</span>' +
-          '<span class="aig-status-badge" role="button" tabindex="0" title="Why: open this study\'s finding & evidence" ' +
-            'style="font-size:0.62em;font-weight:700;color:' + ss.color + ';white-space:nowrap;cursor:pointer;text-decoration:underline dotted;flex:none">' +
-            _esc(confidence) + '</span>' +
+        // Meta row — two prominent, equally-weighted pills on the left (PROGRESS
+        // = execution status, VERDICT = what the evidence supports) + evidence
+        // pips on the right. Two parallel facts: how far it got, and what it
+        // found. The pills wrap under each other on a narrow card. (The ↗
+        // open-study button was removed — a second click on the selected card
+        // opens it.)
+        '<div style="display:flex;align-items:flex-start;justify-content:space-between;gap:6px;margin-bottom:6px">' +
+          '<span style="display:flex;align-items:center;gap:5px;flex-wrap:wrap">' +
+            _aigPill(execMeta, 'Progress (execution): ' + execMeta.label, 'aig-progress-pill aig-status-badge', _pillCompact) +
+            _aigPill(verdictMeta || _VERDICT_PENDING,
+                     verdictMeta ? ('Verdict: ' + verdictMeta.label) : 'Verdict: pending — not yet concluded',
+                     'aig-verdict-pill', _pillCompact) +
+          '</span>' +
+          '<span style="display:flex;align-items:center;gap:6px;flex:none">' +
+            _tierPipsHtml(s) +
+          '</span>' +
         '</div>' +
         '<strong style="display:block;font-size:0.85em;line-height:1.3;color:#1e293b">' + _esc(prettyTitle) + '</strong>' +
         (_opts.asks && asks
-          ? '<div style="font-size:0.72em;margin-top:7px;line-height:1.35;color:#64748b;' + _clamp(2) + '">' +
+          ? '<div class="aig-clamp" data-clamp="' + (_opts.asksFull ? 10 : 2) + '" style="font-size:0.72em;margin-top:7px;line-height:1.35;color:#64748b;' + _clamp(_opts.asksFull ? 10 : 2) + '">' +
               '<span style="font-weight:600;color:#475569">Asks:</span> ' + _esc(asks) + '</div>'
           : '') +
         (_opts.finds
-          ? '<div style="font-size:0.72em;margin-top:5px;line-height:1.35;color:#64748b;' + _clamp(5) + '">' +
+          ? '<div class="aig-clamp" data-clamp="5" style="font-size:0.72em;margin-top:5px;line-height:1.35;color:#64748b;' + _clamp(5) + '">' +
               '<span style="font-weight:600;color:#475569">Finds:</span> ' +
               (claim ? _esc(claim) : '<em style="color:#94a3b8">pending evidence</em>') +
             '</div>'
           : '') +
-        (_opts.finds && moreN
-          ? '<div title="' + _esc(findings.slice(1).map(function (f) {
-                return '• ' + ((f.summary || f.statement || f.id || '').replace(/\s+/g, ' ').trim());
-              }).join('\n')) + '" ' +
-            'style="font-size:0.72em;margin-top:2px;color:#94a3b8;cursor:help">+' + moreN +
-            ' more finding' + (moreN === 1 ? '' : 's') + '</div>'
-          : '') +
+        // Universal "show full card" affordance: expands the card IN PLACE so ANY
+        // card's details are readable the same way — at EVERY zoom band, including
+        // the lowest (names-only, band 0) where the card shows nothing but its
+        // title. The full Asks/Finds/plan live in .aig-full-details below, hidden
+        // until expanded (then the compact preview rows + inline plan are hidden).
+        ('<div class="aig-more-wrap" style="margin-top:6px">' +
+            '<button type="button" class="aig-more-findings" tabindex="-1" aria-expanded="false" ' +
+              'title="Expand the full card in place (a separate action from click-to-select / double-click-to-open)">' +
+              '<span class="aig-more-icon" aria-hidden="true">⤢</span>' +
+              '<span class="aig-more-label" data-compact="' +
+                (moreN ? ('+' + moreN + ' more finding' + (moreN === 1 ? '' : 's')) : 'show full card') + '">' +
+                (moreN ? ('+' + moreN + ' more finding' + (moreN === 1 ? '' : 's')) : 'show full card') +
+              '</span>' +
+            '</button>' +
+          '</div>') +
+        // In-place full detail (hidden until expanded): full Asks / Finds / plan.
+        // Grows the card downward from its anchored top; replaces the removed
+        // floating pop-out. (The redundant inline "Open study →" button was
+        // removed — a second click on the selected card opens the study.)
+        ('<div class="aig-full-details" style="display:none;margin-top:8px;padding-top:8px;' +
+            'border-top:1px solid #eef2f7;font-size:0.78em;line-height:1.5;color:#1e293b">' +
+            _aigCardDetailHtml(s) +
+          '</div>') +
+        // Full-magnification Plan layer: declared contract + mechanisms +
+        // models/methods + success criteria (semantic-zoom band 2 only). Wrapped
+        // so the in-place expansion can hide this compact preview (the full plan
+        // lives inside .aig-full-details above).
+        (_opts.plan ? ('<div class="aig-plan-inline">' + _dagPlanHtml(s) + '</div>') : '') +
         (_opts.followups ? followUpsChip : '') +
         (_opts.chain && chainsBySlug && typeof window._chainBlockHtml === 'function'
           ? window._chainBlockHtml(chainsBySlug[s.name]) : '') +
+        // "Methods · Simulations" block (band-2 near zoom only). Reads the
+        // backend projection fields on the study node `s`.
+        (_opts.methods && typeof window._methodsBlockHtml === 'function'
+          ? window._methodsBlockHtml(s) : '') +
         // Layer-4: cached/compute badge + downloads (↓figures/↓notebook, all
         // modes) + run/continue buttons (live only).
         _dagCacheBadgeHtml(s.name) +
         _dagDownloadControlsHtml(s.name) +
         _dagTriggerControlsHtml(s.name);
       node._followUps = followUps;
+      node._study = s;                       // the in-place expanded detail reads this
+      node.dataset.headColor = headColor;    // card's top accent
       nodesHost.appendChild(node);
       // Wire the pull-or-compute buttons (stopPropagation so the card's own
       // click-to-open handler doesn't also fire).
@@ -10557,22 +12892,38 @@
       });
       var _badge = node.querySelector('.aig-status-badge');
       if (_badge) {
-        var _openReason = function (ev) {
-          ev.stopPropagation();
-          // The quick-look side-card is gone — the verdict badge opens the full
-          // study (its findings/evidence live there).
-          _openStudyInsideInvestigation(s.name);
-        };
-        _badge.addEventListener('click', _openReason);
-        _badge.addEventListener('keydown', function (ev) { if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); _openReason(ev); } });
+        // Clicking the status pill behaves like clicking the card: select (then
+        // a second click opens), so the interaction is consistent everywhere.
+        var _onBadge = function (ev) { ev.stopPropagation(); _aigNodeClick(); };
+        _badge.addEventListener('click', _onBadge);
+        _badge.addEventListener('keydown', function (ev) { if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); _onBadge(ev); } });
       }
+      // "+N more … show full card" → expand the card in place (reader only, no open).
+      node.querySelectorAll('.aig-more-findings').forEach(function (el) {
+        el.setAttribute('role', 'button');
+        el.setAttribute('tabindex', '0');
+        el.addEventListener('click', _toggleExpandInPlace);
+        el.addEventListener('keydown', function (ev) {
+          if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); _toggleExpandInPlace(ev); }
+        });
+      });
+      // (The inline "Open study →" button was removed — opening is the card's own
+      // second-click gesture, _aigNodeClick → _openStudyInsideInvestigation.)
       if (chainsBySlug && window._groupClaims && window._openInvestigationDrawer) {
         (function (study, chain) {
           var claims = window._groupClaims(chain);
           node.querySelectorAll('.aig-claim-row').forEach(function (row) {
             row.addEventListener('click', function (ev) {
               ev.stopPropagation();
-              _openStudyInsideInvestigation(study.name);
+              // Open the claim drawer — it shows the full claim text and each
+              // chain stage labelled (● Finding, ◆ Evidence, ▣ Decision,
+              // ★ Conclusion), with its own "Open full study →" button. This is
+              // what "click to read the evidence" should do, instead of silently
+              // navigating away to the study card.
+              var ci = parseInt(row.getAttribute('data-claim-index'), 10);
+              var claim = claims[ci];
+              if (claim) window._openInvestigationDrawer('claim', { claim: claim, study: study });
+              else _openStudyInsideInvestigation(study.name);
             });
           });
         })(s, chainsBySlug[s.name]);
@@ -10580,6 +12931,14 @@
       pos[s.name] = { x: x, node: node, depth: depth[s.name] };
     });
 
+    // Measure + position + draw, wrapped in a closure so it can RE-RUN. The
+    // first offsetHeight read can UNDER-measure a card before web fonts finish
+    // laying out its text; the column then stacks the cards too tightly and they
+    // overlap. Expanding a card in place also changes its height. Re-running
+    // this on the next frame, on document.fonts.ready, and on expand/collapse
+    // re-measures and re-stacks so neighbours never overlap. isInitial is true
+    // only for the first synchronous pass (it alone resets the scroll position).
+    function _layoutAndDraw(isInitial) {
     // Measure now that content is in the DOM (container is already visible).
     studies.forEach(function(s) { pos[s.name].h = pos[s.name].node.offsetHeight || 120; });
 
@@ -10642,17 +13001,32 @@
     edgesSvg.style.width = canvasW + 'px';
     edgesSvg.style.height = canvasH + 'px';
     // Loom-like viewport: remember the canvas dims and apply the current zoom.
-    // The shell keeps its CSS/user height (resize:vertical) instead of being
-    // forced to fit — content scrolls/zooms inside it.
+    // _applyAigZoom auto-fits the shell height to the content (capped at 88vh)
+    // so the DAG isn't vertically cramped; the user can still drag the
+    // resize:vertical handle to override (double-click the background re-fits).
     var shellSize = document.getElementById('investigation-dag-shell');
-    if (shellSize) { shellSize.dataset.canvasW = canvasW; shellSize.dataset.canvasH = canvasH; }
-    _applyAigZoom();
+    if (shellSize) {
+      shellSize.dataset.canvasW = canvasW; shellSize.dataset.canvasH = canvasH;
+      // The layout's natural canvas height, so _aigAccommodateExpansion can grow
+      // the scroll extent for an expanded card and shrink back to this baseline.
+      shellSize.dataset.layoutCanvasH = canvasH;
+      // Band-INVARIANT structural dims (same regardless of detail band) so the
+      // smart default can pick the band from the available space without
+      // oscillating: columns = depth levels, rows = widest column's card count.
+      var _cols = depths.length || 1;
+      var _rows = 1;
+      depths.forEach(function (d) { var n = (byDepth[d] || []).length; if (n > _rows) _rows = n; });
+      shellSize.dataset.cols = String(_cols);
+      shellSize.dataset.rows = String(_rows);
+    }
+    _applyAigZoom();            // sizes the inline pane to the full viewport height
+    _aigAutoFillInline();       // then picks a readable detail band + fits the zoom
 
     // Edges (drawn after positions are known), using measured heights.
     edgesSvg.innerHTML =
       '<defs><marker id="dag-arrowhead" viewBox="0 0 10 10" refX="9" refY="5" ' +
       'markerWidth="7" markerHeight="7" orient="auto-start-reverse">' +
-      '<path d="M 0 0 L 10 5 L 0 10 z" fill="#94a3b8"/></marker></defs>';
+      '<path d="M 0 0 L 10 5 L 0 10 z" fill="context-stroke"/></marker></defs>';
     studies.forEach(function(s) {
       dagEdgesFor(s).forEach(function(p) {
         var pn = p.study;
@@ -10684,19 +13058,21 @@
                    ', ' + (x2 - dx) + ' ' + y2 +
                    ', ' + x2 + ' ' + y2;
         }
-        var rel = p.relation || 'leads-to';
+        var rel = p.relation || 'builds-on';
         var st = _dagRelStyle(rel);
         var path = document.createElementNS(svgNS, 'path');
         path.setAttribute('d', path_d);
         path.setAttribute('fill', 'none');
         path.setAttribute('stroke', st.color);
         path.setAttribute('stroke-width', '1.5');
-        path.setAttribute('marker-end', 'url(#dag-arrowhead)');
+        // Directed relations get an arrowhead; alternative-to is symmetric and
+        // rendered as a plain connector (no direction implied).
+        if (st.arrow !== false) path.setAttribute('marker-end', 'url(#dag-arrowhead)');
         if (st.dash) path.setAttribute('stroke-dasharray', st.dash);
         edgesSvg.appendChild(path);
         var labelText = st.label;
-        // model-input edges name the consumed upstream outputs when present.
-        if (rel === 'model-input' && p.outputs_used && p.outputs_used.length) {
+        // A builds-on edge names the consumed upstream outputs when present.
+        if (p.outputs_used && p.outputs_used.length) {
           labelText += ' (' + p.outputs_used.join(', ') + ')';
         }
         var label = document.createElementNS(svgNS, 'text');
@@ -10719,50 +13095,184 @@
       });
     });
 
-    // Auto-scroll the shell so the top of the DAG is in view.
+    // Auto-scroll the shell so the top of the DAG is in view (first pass only —
+    // a re-layout from a font-settle or an expand must not yank scroll to top).
+    // Skip when docked in the side panel: a zoom there re-renders, and yanking the
+    // scroll to the top each time made the docked graph "jump back to the top".
     var shell = document.getElementById('investigation-dag-shell');
-    if (shell) shell.scrollTop = 0;
+    if (shell && isInitial && !(shell.closest && shell.closest('#viv-graph-panel'))) shell.scrollTop = 0;
 
-    // Legend (status colors + edge types) — created once below the shell.
-    var legendHost = document.getElementById('investigation-dag-legend');
-    if (!legendHost && shell && shell.parentNode) {
-      legendHost = document.createElement('div');
-      legendHost.id = 'investigation-dag-legend';
-      shell.parentNode.insertBefore(legendHost, shell.nextSibling);
+    // Legend moved behind the "?" info-chip popover (no longer an always-visible
+    // strip below the graph). Fill + wire it here so it's ready on first render.
+    _wireDagLegendPopover();
+    // Re-assert the dock state (float while a study is open, inline otherwise) +
+    // (re)build the graph-bar study navigator against the fresh graph data.
+    _applyDockState();
+    _renderGraphBarNav();
+    // Re-apply the open-study highlight after a (re-)render so it survives.
+    _wsHighlightActiveDagNode(window._wsStudyTabs && window._wsStudyTabs.active);
+    // Re-apply the SELECTED highlight after a (re-)render so it survives.
+    if (window._aigSelected) _aigApplySelection(window._aigSelected);
     }
-    if (legendHost) {
-      var _lg = function(color, icon, label) {
-        return '<span style="display:inline-flex;align-items:center;gap:4px;margin-right:14px">' +
-          '<span style="color:' + color + ';font-size:1em">' + icon + '</span>' +
-          '<span>' + label + '</span></span>';
-      };
-      legendHost.style.cssText = 'display:flex;flex-wrap:wrap;align-items:center;' +
-        'font-size:0.74em;color:#64748b;padding:8px 4px 0;border-top:1px solid #f1f5f9;margin-top:8px';
-      // W13 — edge-relation legend swatches (colored solid/dashed lines).
-      var _edgeLg = function(rel) {
-        var st = _dagRelStyle(rel);
-        var line = 'border-bottom:2px ' + (st.dash ? 'dashed' : 'solid') + ' ' + st.color;
-        return '<span style="display:inline-flex;align-items:center;gap:5px;margin-right:12px">' +
-          '<span style="width:18px;' + line + ';display:inline-block;line-height:0">&nbsp;</span>' +
-          '<span>' + st.label + '</span></span>';
-      };
-      legendHost.innerHTML =
-        '<span style="font-weight:600;color:#475569;margin-right:10px">Confidence:</span>' +
-        _lg('#16a34a', '✓', 'Accepted') + _lg('#ca8a04', '◐', 'Investigating') +
-        _lg('#64748b', '⊘', 'Blocked') +
-        _lg('#2563eb', '○', 'Planned') + _lg('#dc2626', '✗', 'Refuted') +
-        '<span style="flex-basis:100%;height:0"></span>' +
-        '<span style="font-weight:600;color:#475569;margin:6px 10px 0 0">Edges:</span>' +
-        '<span style="margin-top:6px">' +
-          _edgeLg('leads-to') + _edgeLg('model-input') + _edgeLg('evidence') +
-          _edgeLg('calibrates-threshold') + _edgeLg('refutes-alternative') +
-        '</span>';
+    // Run once synchronously, then correct once final layout settles: the next
+    // animation frame catches post-innerHTML reflow, and document.fonts.ready
+    // catches web fonts that change text metrics (the usual cause of the
+    // column-overlap). In-place card expansion does NOT relayout — it anchors the
+    // card's top and grows the shell's scroll extent (see _aigAccommodateExpansion).
+    _relayoutDag = _layoutAndDraw;
+    _layoutAndDraw(true);
+    if (typeof requestAnimationFrame === 'function') {
+      requestAnimationFrame(function () { _layoutAndDraw(false); });
     }
+    try {
+      if (document.fonts && document.fonts.ready && document.fonts.ready.then) {
+        document.fonts.ready.then(function () { _layoutAndDraw(false); });
+      }
+    } catch (e) { /* document.fonts unsupported — initial + rAF passes stand */ }
   }
   window._renderInvestigationDag = _renderInvestigationDag;
+  // Re-run the last DAG render (same data) — used after the graph is relocated
+  // into / out of the dockable Graph panel so it re-measures + re-lays-out at the
+  // new container width. No-op if the graph hasn't been rendered yet.
+  window._reflowInvestigationDag = function () {
+    if (_lastDagArgs) _renderInvestigationDag(_lastDagArgs[0], _lastDagArgs[1], _lastDagArgs[2]);
+  };
 
   // ── Investigation-graph viewport: continuous zoom / pan / fit / fullscreen ──
   var aigZoom = 1;
+
+  // ── Unified zoom: ONE slider that drives semantic detail (band) AND view zoom
+  // together, from a zoomed-out overview (band 0, small) on the left up to the
+  // single-card level (band 2, large) on the right. The fine-grained Detail /
+  // Width / Zoom sliders live in the ⚙ Display popover and stay in sync. The map
+  // is segmented per band so crossing a detail threshold doesn't lurch in size:
+  // each band restarts its view-zoom range a little lower (bigger cards ⇒ less
+  // magnification) for a smooth ramp. u ∈ [0,100].
+  var _aigUserZoomed = false;         // once the user drives zoom, stop auto-fill
+  var _aigApplyingUnified = false;    // reentrancy guard (band change re-renders)
+  var _aigStudyActive = false;        // a study is open below -> shrink the pane
+  var _aigBandDeferred = false;       // a smart-band re-render is already queued
+  // Band 0 (names only) is reserved for the far-zoomed-out overview — a small
+  // slice of the slider. By the time the cards are any size to read, we're at
+  // band 1 (Question + Finds) already, and the top of the slider is band 2 (full
+  // study cards). Each band restarts its view-zoom a little lower so crossing a
+  // detail threshold keeps the on-screen card size roughly continuous.
+  var _AIG_UZ = [
+    { uLo: 0,  uHi: 12,  band: 0, zLo: 0.45, zHi: 0.70 },
+    { uLo: 13, uHi: 55,  band: 1, zLo: 0.60, zHi: 1.10 },
+    { uLo: 56, uHi: 100, band: 2, zLo: 0.75, zHi: 2.00 },
+  ];
+  function _aigSegForUnified(v) {
+    for (var i = 0; i < _AIG_UZ.length; i++) { if (v <= _AIG_UZ[i].uHi) return _AIG_UZ[i]; }
+    return _AIG_UZ[_AIG_UZ.length - 1];
+  }
+  function _aigUnifiedToBandZoom(u) {
+    var v = Math.max(0, Math.min(100, Number(u) || 0));
+    var seg = _aigSegForUnified(v);
+    var t = (v - seg.uLo) / (seg.uHi - seg.uLo);
+    return { band: seg.band, zoom: seg.zLo + Math.max(0, Math.min(1, t)) * (seg.zHi - seg.zLo) };
+  }
+  function _aigBandZoomToUnified(band, z) {
+    var seg = _AIG_UZ[Math.max(0, Math.min(2, band | 0))];
+    var t = Math.max(0, Math.min(1, (z - seg.zLo) / (seg.zHi - seg.zLo)));
+    return Math.round(seg.uLo + t * (seg.uHi - seg.uLo));
+  }
+  // Reflect the current (band, zoom) on the unified slider + the fine sliders,
+  // without stomping a control the user is actively dragging.
+  function _aigSyncZoomUI(band, z, u) {
+    if (u == null) u = _aigBandZoomToUnified(band, z);
+    var us = document.getElementById('aig-unified-zoom');
+    if (us && document.activeElement !== us) us.value = String(Math.round(u));
+    var ds = document.getElementById('aig-zoom-slider');
+    if (ds && document.activeElement !== ds) ds.value = String(band);
+    var vs = document.getElementById('aig-view-zoom-slider');
+    if (vs && document.activeElement !== vs) vs.value = String((Math.round(z * 100) / 100));
+  }
+  // ── Zoom anchored on the SELECTED study ───────────────────────────────────
+  // Zooming should keep the study you're looking at (the selected one, else the
+  // open one) in the same spot on screen, so you don't have to chase it around.
+  // Capture its on-screen centre before zoom, re-measure after, and scroll the
+  // shell by the delta. Falls back to no anchoring when nothing is selected/open.
+  function _aigNodeCentreInShell(shell, slug) {
+    var node = shell.querySelector('.iset-dag-node[data-study="' + _aigCssEsc(slug) + '"]');
+    if (!node) return null;
+    var sr = shell.getBoundingClientRect();
+    var nr = node.getBoundingClientRect();
+    return { x: (nr.left + nr.width / 2) - sr.left, y: (nr.top + nr.height / 2) - sr.top };
+  }
+  // The node to hold fixed while zooming: the SELECTED one if it's on screen,
+  // otherwise the node nearest the current viewport centre — i.e. whatever the
+  // user is looking at. Anchoring on the open node (which may be anywhere, even
+  // off-screen) is what made a docked zoom yank the view back to the top.
+  function _aigCaptureAnchor() {
+    var shell = document.getElementById('investigation-dag-shell');
+    if (!shell) return null;
+    var nodes = shell.querySelectorAll('.iset-dag-node[data-study]');
+    if (!nodes.length) return null;
+    var sr = shell.getBoundingClientRect();
+    var cxV = sr.width / 2, cyV = sr.height / 2;
+    var measure = function (n) {
+      var r = n.getBoundingClientRect();
+      return {
+        x: (r.left + r.width / 2) - sr.left,
+        y: (r.top + r.height / 2) - sr.top,
+        vis: r.bottom > sr.top && r.top < sr.bottom && r.right > sr.left && r.left < sr.right,
+      };
+    };
+    // Prefer the selected node when it's actually visible.
+    if (window._aigSelected) {
+      for (var i = 0; i < nodes.length; i++) {
+        if (nodes[i].getAttribute('data-study') === window._aigSelected) {
+          var so = measure(nodes[i]);
+          if (so.vis) return { slug: window._aigSelected, x: so.x, y: so.y };
+          break;
+        }
+      }
+    }
+    // Otherwise the visible node closest to the viewport centre.
+    var best = null, bestO = null, bestD = Infinity;
+    for (var j = 0; j < nodes.length; j++) {
+      var o = measure(nodes[j]);
+      if (!o.vis) continue;
+      var d = (o.x - cxV) * (o.x - cxV) + (o.y - cyV) * (o.y - cyV);
+      if (d < bestD) { bestD = d; best = nodes[j]; bestO = o; }
+    }
+    return best ? { slug: best.getAttribute('data-study'), x: bestO.x, y: bestO.y } : null;
+  }
+  function _aigRestoreAnchor(a) {
+    if (!a) return;
+    var shell = document.getElementById('investigation-dag-shell');
+    if (!shell) return;
+    var apply = function () {
+      var c = _aigNodeCentreInShell(shell, a.slug);
+      if (!c) return;
+      shell.scrollLeft += (c.x - a.x);
+      shell.scrollTop  += (c.y - a.y);
+    };
+    apply();                                            // after the synchronous layout
+    if (typeof requestAnimationFrame === 'function')    // and again after the rAF relayout
+      requestAnimationFrame(apply);
+  }
+
+  function _setAigUnifiedZoom(u, isUser) {
+    if (_aigApplyingUnified) return;
+    var _anchor = _aigCaptureAnchor();
+    _aigApplyingUnified = true;
+    try {
+      if (isUser) _aigUserZoomed = true;
+      var m = _aigUnifiedToBandZoom(u);
+      aigZoom = Math.max(0.3, Math.min(2, m.zoom));   // set zoom first so a band
+      _setAigBand(m.band);                            // re-render uses it
+      _applyAigZoom();                                // apply when band unchanged
+      _aigSyncZoomUI(m.band, aigZoom, u);
+    } finally { _aigApplyingUnified = false; }
+    _aigRestoreAnchor(_anchor);
+  }
+  window._setAigUnifiedZoom = _setAigUnifiedZoom;
+  // Fine-grained controls (in the ⚙ popover) call this so the auto-fill default
+  // steps aside and they own the zoom from then on.
+  window._aigMarkUserZoomed = function () { _aigUserZoomed = true; };
+
   function _applyAigZoom() {
     var shell = document.getElementById('investigation-dag-shell');
     var nodes = document.getElementById('investigation-dag-nodes');
@@ -10786,8 +13296,138 @@
     }
     spacer.style.width = (cw * z) + 'px';
     spacer.style.height = (ch * z) + 'px';
+
+    // Auto-fit the shell's HEIGHT to the (scaled) content so every study is
+    // visible without an internal vertical scrollbar — the long study chain
+    // still scrolls horizontally, but the graph is never vertically cramped.
+    // Capped at 88vh; honored until the user manually drags the resize handle
+    // (resize:vertical), after which their height sticks. Double-click the
+    // graph background clears the override and re-fits (see the pan handler).
+    if (!shell.dataset.userResized) {
+      // Default INLINE view (not docked / not in the side panel / not collapsed):
+      // make the pane the FULL screen height — from the shell's top down to the
+      // bottom of the viewport — so the graph has the whole screen before a study
+      // is opened. _aigAutoFillInline then zooms the graph up to fill it. Docked /
+      // panelled views keep the content-fit height (capped at 88vh).
+      var _fs = document.getElementById('investigation-dag-fs');
+      var _inline = _fs && !_fs.classList.contains('aig-dock') && !_fs.classList.contains('aig-collapsed')
+                    && !(shell.closest && shell.closest('#viv-graph-panel'));
+      var fitH;
+      if (_inline) {
+        var _vh = window.innerHeight || 900;
+        var _top = shell.getBoundingClientRect().top;
+        if (_aigStudyActive) {
+          // A study is open below: keep the graph's TOP where it is but shrink the
+          // pane to ~42% of the viewport so the study card below rises into view
+          // without scrolling. The graph still scrolls inside the shorter pane.
+          fitH = Math.max(Math.round(_vh * 0.42), 220);
+        } else {
+          // No study open: fill the screen from the pane's top down.
+          fitH = Math.max(Math.min(Math.round(_vh - _top - 16), Math.round(_vh * 0.94)), 360);
+        }
+      } else {
+        var maxH = Math.round((window.innerHeight || 900) * 0.88);
+        fitH = Math.min(Math.max(Math.ceil(ch * z) + 20, 260), maxH);
+      }
+      shell._aigProgrammaticResize = true;
+      shell.style.height = fitH + 'px';
+      setTimeout(function () { shell._aigProgrammaticResize = false; }, 60);
+    }
+    // One-time: watch for a genuine user resize (drag of the resize handle) so
+    // auto-fit steps aside once they've set a height themselves.
+    if (!shell._aigResizeObserved && typeof ResizeObserver !== 'undefined') {
+      shell._aigResizeObserved = true;
+      try {
+        new ResizeObserver(function () {
+          if (shell._aigProgrammaticResize) return;
+          shell.dataset.userResized = '1';
+          // Drag the graph↔study divider all the way up (shell shrinks past the
+          // threshold) → collapse the inline graph to the "Investigation graph" bar.
+          var fs = document.getElementById('investigation-dag-fs');
+          if (fs && !fs.classList.contains('aig-collapsed') && !fs.classList.contains('aig-dock')
+              && !(shell.closest && shell.closest('#viv-graph-panel'))
+              && shell.offsetParent !== null && shell.clientHeight > 0 && shell.clientHeight < 72) {
+            _aigCollapseInline();
+          }
+        }).observe(shell);
+      } catch (_e) { /* ResizeObserver unavailable — auto-fit still works */ }
+    }
+    // Keep the Zoom slider in sync when zoom changes programmatically (e.g. fit).
+    var _zs = document.getElementById('aig-view-zoom-slider');
+    if (_zs && document.activeElement !== _zs) _zs.value = String(aigZoom);
   }
-  function _aigZoomBy(f) { aigZoom = Math.max(0.3, Math.min(2.2, aigZoom * f)); _applyAigZoom(); }
+  function _aigZoomBy(f) {
+    var _anchor = _aigCaptureAnchor();
+    aigZoom = Math.max(0.3, Math.min(2.2, aigZoom * f));
+    _applyAigZoom();
+    _aigRestoreAnchor(_anchor);
+  }
+  // Absolute zoom from the Zoom slider (same control style as Detail/Width).
+  function _setAigZoom(v) {
+    var _anchor = _aigCaptureAnchor();
+    aigZoom = Math.max(0.3, Math.min(2, Number(v) || 1));
+    _applyAigZoom();
+    if (!_aigApplyingUnified) _aigSyncZoomUI(aigBand, aigZoom);
+    _aigRestoreAnchor(_anchor);
+  }
+  window._setAigZoom = _setAigZoom;
+  // Collapse the inline investigation graph to a thin "Investigation graph" bar
+  // (triggered by dragging the graph↔study divider all the way up, or a control),
+  // and expand it back (click the bar) to a normal height.
+  function _aigCollapseInline() {
+    var fs = document.getElementById('investigation-dag-fs');
+    if (fs) fs.classList.add('aig-collapsed');
+    _aigSyncGraphToggle();
+  }
+  function _aigExpandInline() {
+    var fs = document.getElementById('investigation-dag-fs');
+    if (fs) fs.classList.remove('aig-collapsed');
+    var shell = document.getElementById('investigation-dag-shell');
+    if (shell) {
+      shell._aigProgrammaticResize = true;
+      shell.style.height = '460px';
+      delete shell.dataset.userResized;   // let auto-fit resume
+      setTimeout(function () { shell._aigProgrammaticResize = false; }, 80);
+    }
+    try { if (typeof window._aigFit === 'function') window._aigFit(); } catch (e) { /* ignore */ }
+    _aigSyncGraphToggle();
+  }
+  // Is the inline investigation graph actually VISIBLE right now? It can be hidden
+  // either by the collapsed class OR by having zero height (no study / fresh
+  // render before auto-fill), so judge by real visibility, not just the class.
+  function _aigGraphShown() {
+    var fs = document.getElementById('investigation-dag-fs');
+    if (!fs || fs.classList.contains('aig-collapsed')) return false;
+    if (fs.classList.contains('aig-dock')) return true;   // docked window counts as shown
+    var sh = document.getElementById('investigation-dag-shell');
+    return !!(sh && sh.offsetParent !== null && sh.getBoundingClientRect().height > 8);
+  }
+  window._aigGraphShown = _aigGraphShown;
+  // Toggle the inline investigation graph from the header-nav "Graph" button
+  // (next to Overview). The standalone slim "Investigation graph" bar was removed;
+  // this header button is the always-available toggle. Expanding always gives the
+  // graph a visible height (_aigExpandInline sets it + fits).
+  function _aigToggleInline() {
+    var fs = document.getElementById('investigation-dag-fs');
+    if (!fs) return;
+    if (_aigGraphShown()) _aigCollapseInline();
+    else _aigExpandInline();
+  }
+  // Keep the header "Graph" button's caret + state in sync with the graph,
+  // whatever toggles it (this button, the graph↔study divider drag, the dock
+  // control). Caret ▾ = graph shown, ▸ = graph hidden.
+  function _aigSyncGraphToggle() {
+    var btn = document.getElementById('inv-graph-toggle');
+    if (!btn) return;
+    var shown = _aigGraphShown();
+    btn.innerHTML = '<span class="inv-graph-caret" aria-hidden="true">' + (shown ? '▾' : '▸') + '</span> Graph';
+    btn.setAttribute('aria-expanded', shown ? 'true' : 'false');
+    btn.setAttribute('title', shown ? 'Hide investigation graph' : 'Show investigation graph');
+  }
+  window._aigCollapseInline = _aigCollapseInline;
+  window._aigExpandInline = _aigExpandInline;
+  window._aigToggleInline = _aigToggleInline;
+  window._aigSyncGraphToggle = _aigSyncGraphToggle;
   function _aigFit() {
     var shell = document.getElementById('investigation-dag-shell');
     if (!shell) return;
@@ -10797,17 +13437,306 @@
     _applyAigZoom();
     shell.scrollLeft = 0; shell.scrollTop = 0;
   }
-  function _aigFullscreen() {
+  // Reflow the graph viewport at the CURRENT zoom — re-apply the transform and
+  // resize the scroll spacer to match the (unchanged) scale, WITHOUT recomputing
+  // the zoom to fit. Relocating or resizing the dockable Graph panel then pans /
+  // reflows the view but never changes the zoom level the user set. This is the
+  // fix for "resize or re-dock snaps the graph to fit": the dock callbacks used to
+  // call _aigFit (which overwrites aigZoom); they now call this.
+  function _aigReflowKeepZoom() {
     var shell = document.getElementById('investigation-dag-shell');
     if (!shell) return;
-    if (document.fullscreenElement) { document.exitFullscreen(); }
-    else if (shell.requestFullscreen) { shell.requestFullscreen().then(function () { setTimeout(_aigFit, 150); }); }
+    _applyAigZoom();   // re-apply the current aigZoom + re-size the scroll extent
+  }
+  window._aigReflowKeepZoom = _aigReflowKeepZoom;
+  // Fit to the container UNLESS the user has taken the zoom over (_aigUserZoomed),
+  // in which case keep their zoom and just reflow. Used when the graph ENTERS or
+  // LEAVES the dock (an initial-ish fit) so the first dock view is sized sensibly,
+  // while still honoring the user's zoom intent lever.
+  function _aigFitOrKeep() {
+    if (_aigUserZoomed) { _aigReflowKeepZoom(); return; }
+    _aigFit();
+  }
+  window._aigFitOrKeep = _aigFitOrKeep;
+  // Fill the DOCKED Graph panel cleanly: zoom the graph to fill the panel's
+  // CONSTRAINED dimension so it doesn't sit small in a mostly-empty box (the
+  // top-dock "graph floats at the top, dead space below → Overview shoved down"
+  // bug). A top/bottom BAND is short, so fill its HEIGHT (the long chain scrolls
+  // horizontally); a left/right COLUMN is narrow, so fill its WIDTH (scrolls
+  // vertically). The panel itself is a bounded CSS band (--viv-graph-h) — this
+  // only sizes the GRAPH to it, it never grows the panel. Honors the zoom-intent
+  // lever: once the user has driven the zoom (_aigUserZoomed) we keep it. Used on
+  // dock enter / dock-position switch / expand, not on edge-resize (that reflows).
+  function _aigFitDockPanel() {
+    var shell = document.getElementById('investigation-dag-shell');
+    if (!shell) return;
+    var fs = document.getElementById('investigation-dag-fs');
+    if (!fs || !fs.closest || !fs.closest('#viv-graph-panel')) { _aigReflowKeepZoom(); return; }
+    if (_aigUserZoomed) { _aigReflowKeepZoom(); return; }   // respect a manual zoom
+    var cw = parseFloat(shell.dataset.canvasW) || 1, ch = parseFloat(shell.dataset.canvasH) || 1;
+    var gp = document.getElementById('viv-graph-panel');
+    var dock = gp && gp.dataset ? gp.dataset.dock : '';
+    var availW = shell.clientWidth || 1, availH = shell.clientHeight || 1;
+    var z;
+    if (dock === 'left' || dock === 'right') z = (availW - 16) / cw;       // fill column width
+    else if (dock === 'top' || dock === 'bottom') z = (availH - 16) / ch;  // fill band height
+    else z = Math.min((availW - 16) / cw, (availH - 16) / ch);             // fallback: fit both
+    aigZoom = Math.max(0.3, Math.min(2, z || 1));
+    _applyAigZoom();
+    shell.scrollLeft = 0; shell.scrollTop = 0;
+    try { _aigSyncZoomUI(aigBand, aigZoom); } catch (e) { /* ignore */ }
+  }
+  window._aigFitDockPanel = _aigFitDockPanel;
+  // Default pre-study INLINE view: after _applyAigZoom has sized the pane to the
+  // full viewport height, zoom the graph UP to fill that height (as large as it
+  // goes, capped at 2×). The wide study chain scrolls horizontally. Skipped when
+  // docked / in the side panel / collapsed, or once the user has resized the pane.
+  function _aigAutoFillInline() {
+    if (_aigUserZoomed || _aigApplyingUnified) return;   // user owns zoom now
+    var shell = document.getElementById('investigation-dag-shell');
+    if (!shell || shell.dataset.userResized) return;
+    var fs = document.getElementById('investigation-dag-fs');
+    if (!fs || fs.classList.contains('aig-dock') || fs.classList.contains('aig-collapsed')) return;
+    if (shell.closest && shell.closest('#viv-graph-panel')) return;
+    var ch = parseFloat(shell.dataset.canvasH) || 0;
+    var h = shell.clientHeight || 0;
+    if (ch < 1 || h < 40) return;
+
+    // SMART default detail: pick the semantic band from how much VERTICAL room
+    // each row of cards would get when the graph fills the pane height. A wide,
+    // zoomed-out graph gives each card little room, so paragraph text would be
+    // unreadable — show names only (band 0). More room -> Asks/Finds (band 1) ->
+    // full cards (band 2). This uses the BAND-INVARIANT row count so switching
+    // the band doesn't change the decision (no oscillation).
+    var rows = parseInt(shell.dataset.rows, 10) || 1;
+    var rowPx = (h - 24) / rows;                     // px budget per card row at fill
+    var targetBand = rowPx < 110 ? 0 : (rowPx < 175 ? 1 : 2);
+    if (targetBand !== aigBand) {
+      // DEFER the re-render: _aigAutoFillInline runs from inside _layoutAndDraw,
+      // BEFORE this pass draws its edges. Re-rendering synchronously here would
+      // let the current (stale) pass finish drawing edges on top of the new
+      // layout — misaligned edges. A 0ms timeout lets this pass complete, then
+      // re-renders cleanly at the readable band (its own pass fits the zoom).
+      if (!_aigBandDeferred) {
+        _aigBandDeferred = true;
+        setTimeout(function () { _aigBandDeferred = false; _setAigBand(targetBand); }, 0);
+      }
+      return;
+    }
+
+    // Band is right for the space -> fit the view zoom to the pane. Fit BOTH
+    // dimensions (like the Fit button) so a WIDE multi-study network shows the
+    // whole graph on first paint instead of overflowing horizontally (filling
+    // height alone left a wide chain zoomed-in, needing a horizontal scroll to
+    // see it). Fall back to the height fit when the canvas width isn't measured.
+    var cw = parseFloat(shell.dataset.canvasW) || 0;
+    var w = shell.clientWidth || 0;
+    var zH = (h - 16) / ch;
+    var zFit = (cw > 1 && w > 40) ? Math.min(zH, (w - 16) / cw) : zH;
+    var z = Math.max(0.3, Math.min(2, zFit));
+    if (Math.abs(z - aigZoom) < 0.02) { _aigSyncZoomUI(aigBand, aigZoom); return; }
+    aigZoom = z;
+    _applyAigZoom();
+    _aigSyncZoomUI(aigBand, aigZoom);
+    shell.scrollTop = 0;
+  }
+  window._aigAutoFillInline = _aigAutoFillInline;
+  function _aigFullscreen() {
+    // Fullscreen the WRAPPER (toolbar + shell), not the shell alone, so the
+    // graph controls (semantic zoom, +/− view zoom, fit, orientation, download)
+    // stay on screen in fullscreen. Fall back to the shell if the wrapper is
+    // absent (older markup), and to the webkit-prefixed API (Safari).
+    var fs = document.getElementById('investigation-dag-fs')
+          || document.getElementById('investigation-dag-shell');
+    if (!fs) return;
+    var fsEl = document.fullscreenElement || document.webkitFullscreenElement;
+    if (fsEl) {
+      (document.exitFullscreen || document.webkitExitFullscreen || function () {}).call(document);
+      return;
+    }
+    var req = fs.requestFullscreen || fs.webkitRequestFullscreen;
+    if (!req) return;
+    var p = req.call(fs);
+    if (p && p.then) p.then(function () { setTimeout(_aigFit, 150); });
+    else setTimeout(_aigFit, 200);
+  }
+  // Expand (snap-to-top): grow the graph pane to nearly the full viewport height
+  // and scroll it to the top of the screen, WITHOUT going fullscreen — so the whole
+  // workbench interface (rail, tabs) stays available. Toggles back to the normal
+  // pane height. A taller alternative to the browser-fullscreen (⛶) button.
+  function _aigExpand() {
+    var shell = document.getElementById('investigation-dag-shell');
+    if (!shell) return;
+    var expanded = shell.classList.toggle('aig-expanded');
+    var btn = document.getElementById('aig-expand-btn');
+    if (btn) {
+      btn.textContent = expanded ? '⤓' : '⤒';
+      btn.title = expanded ? 'Collapse graph to the normal pane height'
+                           : 'Expand graph — snap to top and grow it tall (workbench stays)';
+    }
+    if (expanded) {
+      // Snap the graph to the top of the viewport, then fit it to the taller area.
+      try { shell.scrollIntoView({ block: 'start', behavior: 'smooth' }); }
+      catch (_) { shell.scrollIntoView(true); }
+      setTimeout(_aigFit, 220);
+    } else {
+      setTimeout(_aigFit, 60);
+    }
   }
   window._aigZoomBy = _aigZoomBy;
   window._aigFit = _aigFit;
+  // Fill to screen (toolbar ⤢ Fit): fit the WHOLE graph to the viewport in both
+  // dimensions and CENTRE it — the on-demand "re-fit + centre now" control. Unlike
+  // the passive auto-fill, it runs even after the user has taken over the view.
+  function _aigFillToScreen() {
+    var shell = document.getElementById('investigation-dag-shell');
+    if (!shell) return;
+    var cw = parseFloat(shell.dataset.canvasW) || 1, ch = parseFloat(shell.dataset.canvasH) || 1;
+    var z = Math.min((shell.clientWidth - 16) / cw, (shell.clientHeight - 16) / ch);
+    aigZoom = Math.max(0.3, Math.min(2, z || 1));
+    _applyAigZoom();
+    // Centre the now-fully-visible graph in the viewport.
+    shell.scrollLeft = Math.max(0, (cw * aigZoom - shell.clientWidth) / 2);
+    shell.scrollTop  = Math.max(0, (ch * aigZoom - shell.clientHeight) / 2);
+    try { _aigSyncZoomUI(aigBand, aigZoom); } catch (_e) { /* ignore */ }
+  }
+  window._aigFillToScreen = _aigFillToScreen;
   window._aigFullscreen = _aigFullscreen;
+  window._aigExpand = _aigExpand;
+
+  // ── Download the investigation graph as PNG / PDF ────────────────────────
+  // The DAG is bespoke HTML (positioned cards + an SVG edge layer), not a loom
+  // graph, so we rasterize it with html-to-image. Both that and jsPDF are
+  // lazy-loaded from a CDN only when the user actually downloads — keeping the
+  // page light and not breaking offline use of the rest of the toolbar.
+  function _aigLoadScript(src) {
+    return new Promise(function (resolve, reject) {
+      var s = document.createElement('script');
+      s.src = src; s.async = true;
+      s.onload = function () { resolve(); };
+      s.onerror = function () { reject(new Error('Could not load ' + src)); };
+      document.head.appendChild(s);
+    });
+  }
+  var _htiP = null, _jspdfP = null;
+  function _ensureHtmlToImage() {
+    if (window.htmlToImage) return Promise.resolve(window.htmlToImage);
+    if (!_htiP) _htiP = _aigLoadScript('https://cdnjs.cloudflare.com/ajax/libs/html-to-image/1.11.11/html-to-image.min.js')
+      .then(function () { return window.htmlToImage; });
+    return _htiP;
+  }
+  function _ensureJsPdf() {
+    if (window.jspdf && window.jspdf.jsPDF) return Promise.resolve(window.jspdf.jsPDF);
+    if (!_jspdfP) _jspdfP = _aigLoadScript('https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js')
+      .then(function () { return window.jspdf.jsPDF; });
+    return _jspdfP;
+  }
+  function _aigNotify(msg) {
+    if (typeof window._notify === 'function') { try { window._notify(msg); return; } catch (_e) {} }
+    try { window.alert(msg); } catch (_e) {}
+  }
+  function _aigExport(fmt) {
+    var shell = document.getElementById('investigation-dag-shell');
+    var nodes = document.getElementById('investigation-dag-nodes');
+    var edges = document.getElementById('investigation-dag-edges');
+    if (!shell || !nodes) { _aigNotify('Investigation graph is not ready to export yet.'); return; }
+    var cw = Math.ceil(parseFloat(shell.dataset.canvasW) || nodes.offsetWidth || shell.scrollWidth || 0);
+    var ch = Math.ceil(parseFloat(shell.dataset.canvasH) || nodes.offsetHeight || shell.scrollHeight || 0);
+    if (!cw || !ch) { _aigNotify('Investigation graph has no measured size yet — try again after it renders.'); return; }
+    // Snapshot live view state, then lay the whole canvas out unscaled so the
+    // export captures the FULL graph (not just the scrolled/zoomed viewport).
+    var prev = {
+      zoom: aigZoom, sl: shell.scrollLeft, st: shell.scrollTop,
+      height: shell.style.height, width: shell.style.width,
+      overflow: shell.style.overflow, maxH: shell.style.maxHeight,
+      resize: shell.style.resize, cursor: shell.style.cursor,
+      userResized: shell.dataset.userResized,
+    };
+    shell.dataset.userResized = '1';            // stop auto-fit from fighting us
+    aigZoom = 1;
+    [nodes, edges].forEach(function (el) { if (el) el.style.transform = 'scale(1)'; });
+    shell.style.overflow = 'visible'; shell.style.maxHeight = 'none';
+    shell.style.height = ch + 'px'; shell.style.width = cw + 'px';
+    shell.style.resize = 'none'; shell.scrollLeft = 0; shell.scrollTop = 0;
+    function _restore() {
+      shell.style.height = prev.height; shell.style.width = prev.width;
+      shell.style.overflow = prev.overflow; shell.style.maxHeight = prev.maxH;
+      shell.style.resize = prev.resize; shell.style.cursor = prev.cursor;
+      if (prev.userResized === undefined) delete shell.dataset.userResized;
+      else shell.dataset.userResized = prev.userResized;
+      aigZoom = prev.zoom; _applyAigZoom();
+      shell.scrollLeft = prev.sl; shell.scrollTop = prev.st;
+    }
+    var base = (typeof _dagInvSlug === 'string' && _dagInvSlug) ? _dagInvSlug : 'investigation';
+    var opts = { backgroundColor: '#ffffff', width: cw, height: ch, pixelRatio: 2, style: { transform: 'none' } };
+    _ensureHtmlToImage().then(function (hti) {
+      return hti.toPng(shell, opts).then(function (dataUrl) {
+        if (fmt === 'pdf') {
+          return _ensureJsPdf().then(function (JsPDF) {
+            var pdf = new JsPDF({ orientation: cw >= ch ? 'landscape' : 'portrait', unit: 'px', format: [cw, ch] });
+            pdf.addImage(dataUrl, 'PNG', 0, 0, cw, ch);
+            pdf.save(base + '-investigation-graph.pdf');
+          });
+        }
+        var a = document.createElement('a');
+        a.href = dataUrl; a.download = base + '-investigation-graph.png';
+        document.body.appendChild(a); a.click(); a.remove();
+      });
+    }).catch(function (e) {
+      _aigNotify('Graph download failed: ' + (e && e.message ? e.message : e));
+    }).then(_restore, _restore);
+  }
+  function _aigCloseDownloadMenu() {
+    var menu = document.getElementById('aig-dl-menu');
+    var btn = document.getElementById('aig-dl-btn');
+    if (menu) menu.style.display = 'none';
+    if (btn) btn.setAttribute('aria-expanded', 'false');
+  }
+  function _aigToggleDownloadMenu(ev) {
+    if (ev) ev.stopPropagation();
+    var menu = document.getElementById('aig-dl-menu');
+    var btn = document.getElementById('aig-dl-btn');
+    if (!menu) return;
+    var open = menu.style.display !== 'none' && menu.style.display !== '';
+    menu.style.display = open ? 'none' : 'block';
+    if (btn) btn.setAttribute('aria-expanded', open ? 'false' : 'true');
+  }
+  function _aigDownloadMenuPick(fmt) {
+    _aigCloseDownloadMenu();
+    _aigExport(fmt);
+  }
+  // Close the download menu on any outside click (capture so card handlers that
+  // stopPropagation don't swallow it).
+  document.addEventListener('click', function (e) {
+    var ctl = e.target.closest && e.target.closest('.aig-dl-ctl');
+    if (!ctl) _aigCloseDownloadMenu();
+  }, true);
+  window._aigExport = _aigExport;
+  window._aigToggleDownloadMenu = _aigToggleDownloadMenu;
+  window._aigDownloadMenuPick = _aigDownloadMenuPick;
+  // ⚙ Display settings popover (Detail / Width / Zoom sliders), same pattern as
+  // the Export menu — click to toggle, outside-click to close.
+  function _aigCloseSettings() {
+    var m = document.getElementById('aig-settings-menu'), b = document.getElementById('aig-settings-btn');
+    if (m) m.style.display = 'none';
+    if (b) b.setAttribute('aria-expanded', 'false');
+  }
+  function _aigToggleSettings(ev) {
+    if (ev) ev.stopPropagation();
+    var m = document.getElementById('aig-settings-menu'), b = document.getElementById('aig-settings-btn');
+    if (!m) return;
+    var open = m.style.display === 'block';
+    m.style.display = open ? 'none' : 'block';
+    if (b) b.setAttribute('aria-expanded', open ? 'false' : 'true');
+  }
+  window._aigToggleSettings = _aigToggleSettings;
+  document.addEventListener('click', function (e) {
+    var ctl = e.target.closest && e.target.closest('.aig-settings-ctl');
+    if (!ctl) _aigCloseSettings();
+  }, true);
   // Drag anywhere on the shell background to pan (card clicks still work).
   document.addEventListener('pointerdown', function (e) {
+    if (e.pointerType === 'touch') return;   // touch pan + pinch is owned by _aigWireTouch
     var shell = e.target.closest && e.target.closest('#investigation-dag-shell');
     if (!shell || (e.target.closest && e.target.closest('.iset-dag-node'))) return;
     var sx = e.clientX, sy = e.clientY, sl = shell.scrollLeft, st0 = shell.scrollTop, moved = false;
@@ -10817,10 +13746,152 @@
       document.removeEventListener('pointermove', mv);
       document.removeEventListener('pointerup', up);
       shell.style.cursor = '';
+      // A real pan means the user now owns the view — stop auto-fit from snapping
+      // it back to the fit on the next re-render / resize / poll.
+      if (moved) { try { window._aigMarkUserZoomed(); } catch (_e) { /* ignore */ } }
     }
     document.addEventListener('pointermove', mv);
     document.addEventListener('pointerup', up);
   });
+  // Double-click the graph background clears a manual resize and re-fits the
+  // shell height to the content.
+  document.addEventListener('dblclick', function (e) {
+    var shell = e.target.closest && e.target.closest('#investigation-dag-shell');
+    if (!shell || (e.target.closest && e.target.closest('.iset-dag-node'))) return;
+    delete shell.dataset.userResized;
+    _applyAigZoom();
+  });
+
+  // Full-width resize bar below the graph: grab anywhere on it (not just a corner
+  // grip) to drag the graph height up/down. Dragging all the way up collapses the
+  // graph to its "Investigation graph" bar. Uses pointer capture so the drag
+  // keeps tracking even over the study iframe below.
+  var _AIG_RESIZE_COLLAPSE_AT = 72;
+  function _aigWireResizeBar() {
+    var bar = document.getElementById('aig-resize-bar');
+    if (!bar || bar._aigWired) return;
+    bar._aigWired = true;
+    bar.addEventListener('pointerdown', function (e) {
+      if (e.button !== undefined && e.button !== 0) return;
+      var shell = document.getElementById('investigation-dag-shell');
+      if (!shell) return;
+      e.preventDefault();
+      var startY = e.clientY;
+      var startH = shell.getBoundingClientRect().height;
+      var maxH = Math.round((window.innerHeight || 900) * 0.92);
+      var done = false;
+      bar.classList.add('dragging');
+      document.body.style.cursor = 'row-resize';
+      try { bar.setPointerCapture(e.pointerId); } catch (_) { /* older browsers */ }
+      function finish() {
+        if (done) return; done = true;
+        bar.removeEventListener('pointermove', mv);
+        bar.removeEventListener('pointerup', up);
+        bar.removeEventListener('pointercancel', up);
+        bar.classList.remove('dragging');
+        document.body.style.cursor = '';
+      }
+      function mv(ev) {
+        var h = startH + (ev.clientY - startY);
+        if (h < _AIG_RESIZE_COLLAPSE_AT) {
+          // Dragged all the way up -> collapse to the "Investigation graph" bar.
+          shell.dataset.userResized = '1';
+          if (typeof window._aigCollapseInline === 'function') window._aigCollapseInline();
+          finish();
+          return;
+        }
+        h = Math.max(_AIG_RESIZE_COLLAPSE_AT, Math.min(h, maxH));
+        shell._aigProgrammaticResize = false;
+        shell.dataset.userResized = '1';   // a manual height sticks; auto-fit steps aside
+        shell.style.height = h + 'px';
+      }
+      function up() { finish(); }
+      bar.addEventListener('pointermove', mv);
+      bar.addEventListener('pointerup', up);
+      bar.addEventListener('pointercancel', up);
+    });
+  }
+  window._aigWireResizeBar = _aigWireResizeBar;
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', _aigWireResizeBar);
+  else _aigWireResizeBar();
+
+  // Ctrl/⌘ + mouse-wheel (and trackpad pinch, which the browser delivers as a
+  // wheel event with ctrlKey=true) zooms the investigation graph via the UNIFIED
+  // zoom — so it adjusts semantic detail (band) AND magnification together, just
+  // like the Zoom slider. A plain wheel still scrolls the page normally (we only
+  // hijack it with the modifier). The zoom is anchored on the cursor.
+  function _aigWireWheelZoom() {
+    var shell = document.getElementById('investigation-dag-shell');
+    if (!shell || shell._aigWheelWired) return;
+    shell._aigWheelWired = true;
+    shell.addEventListener('wheel', function (e) {
+      if (!(e.ctrlKey || e.metaKey)) return;     // only with a modifier / pinch
+      e.preventDefault();
+      var us = document.getElementById('aig-unified-zoom');
+      var curU = us ? parseFloat(us.value) : _aigBandZoomToUnified(aigBand, aigZoom);
+      if (isNaN(curU)) curU = _aigBandZoomToUnified(aigBand, aigZoom);
+      var d = e.deltaY;
+      if (e.deltaMode === 1) d *= 16;            // line mode -> ~pixels
+      else if (e.deltaMode === 2) d *= 400;      // page mode
+      var newU = Math.max(0, Math.min(100, curU - d * 0.06));   // up = zoom in
+      if (Math.abs(newU - curU) < 0.01) return;
+      // Scroll anchoring is handled inside _setAigUnifiedZoom (it holds the
+      // viewport-centre study fixed, docked or inline, across both the scale and
+      // any band re-render) — no separate math here, which previously fought it.
+      _setAigUnifiedZoom(newU, true);
+    }, { passive: false });
+  }
+  window._aigWireWheelZoom = _aigWireWheelZoom;
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', _aigWireWheelZoom);
+  else _aigWireWheelZoom();
+
+  // Touch: one-finger PAN + two-finger PINCH-zoom on the graph shell, so the
+  // investigation graph is navigable on a phone. touch-action:none on the shell
+  // (template) keeps these gestures from scrolling / zooming the PAGE instead; the
+  // mouse/pen pan path (pointerdown above) ignores touch so the two never fight.
+  // Both gestures mark the view user-owned, so auto-fit won't snap it back.
+  function _aigWireTouch() {
+    var shell = document.getElementById('investigation-dag-shell');
+    if (!shell || shell._aigTouchWired) return;
+    shell._aigTouchWired = true;
+    var mode = 0, sx = 0, sy = 0, sl = 0, st = 0, startDist = 1, startZoom = 1;
+    function dist(t) {
+      var dx = t[0].clientX - t[1].clientX, dy = t[0].clientY - t[1].clientY;
+      return Math.sqrt(dx * dx + dy * dy);
+    }
+    shell.addEventListener('touchstart', function (e) {
+      if (e.target.closest && e.target.closest('.iset-dag-node')) return;   // let node taps through
+      if (e.touches.length === 1) {
+        mode = 1; sx = e.touches[0].clientX; sy = e.touches[0].clientY; sl = shell.scrollLeft; st = shell.scrollTop;
+      } else if (e.touches.length >= 2) {
+        mode = 2; startDist = dist(e.touches) || 1; startZoom = aigZoom;
+      }
+    }, { passive: true });
+    shell.addEventListener('touchmove', function (e) {
+      if (mode === 1 && e.touches.length === 1) {
+        e.preventDefault();
+        shell.scrollLeft = sl - (e.touches[0].clientX - sx);
+        shell.scrollTop  = st - (e.touches[0].clientY - sy);
+      } else if (mode === 2 && e.touches.length >= 2) {
+        e.preventDefault();
+        aigZoom = Math.max(0.3, Math.min(2, startZoom * (dist(e.touches) / startDist)));
+        _applyAigZoom();
+        try { _aigSyncZoomUI(aigBand, aigZoom); } catch (_e) { /* ignore */ }
+      }
+    }, { passive: false });
+    function end(e) {
+      if (mode) { try { window._aigMarkUserZoomed(); } catch (_e) { /* ignore */ } }
+      if (!e.touches || e.touches.length === 0) { mode = 0; }
+      else if (e.touches.length === 1) {
+        mode = 1; sx = e.touches[0].clientX; sy = e.touches[0].clientY; sl = shell.scrollLeft; st = shell.scrollTop;
+      }
+    }
+    shell.addEventListener('touchend', end, { passive: true });
+    shell.addEventListener('touchcancel', end, { passive: true });
+  }
+  window._aigWireTouch = _aigWireTouch;
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', _aigWireTouch);
+  else _aigWireTouch();
 
   function _setAigBand(b) {
     var nb = Math.max(0, Math.min(2, b | 0));
@@ -10828,10 +13899,29 @@
     if (sl && String(sl.value) !== String(nb)) sl.value = String(nb);
     // No band change → keep the slider synced (above) but skip the re-render.
     if (nb === aigBand) return;
+    var _anchor = _aigCaptureAnchor();   // keep the selected study fixed on screen (same as zoom)
     aigBand = nb;
+    if (!_aigApplyingUnified) _aigSyncZoomUI(aigBand, aigZoom);
     if (_lastDagArgs) _renderInvestigationDag(_lastDagArgs[0], _lastDagArgs[1], _lastDagArgs[2]);
+    _aigRestoreAnchor(_anchor);
   }
   window._setAigBand = _setAigBand;
+
+  // Card-width control (independent of the zoom band). Scales the study cards so
+  // the viewer can widen them to read the Asks/Finds text, or narrow them to fit
+  // more of the graph. Persisted per viewer; re-lays-out the DAG on change.
+  function _setAigWidthScale(scale) {
+    var s = Math.max(AIG_WIDTH_MIN, Math.min(AIG_WIDTH_MAX, Number(scale) || 1));
+    var sl = document.getElementById('aig-width-slider');
+    if (sl && String(sl.value) !== String(s)) sl.value = String(s);
+    if (s === aigWidthScale) return;
+    var _anchor = _aigCaptureAnchor();   // keep the selected study fixed on screen (same as zoom)
+    aigWidthScale = s;
+    try { localStorage.setItem('aig-width-scale', String(s)); } catch (e) {}
+    if (_lastDagArgs) _renderInvestigationDag(_lastDagArgs[0], _lastDagArgs[1], _lastDagArgs[2]);
+    _aigRestoreAnchor(_anchor);
+  }
+  window._setAigWidthScale = _setAigWidthScale;
 
   // Semantic zoom is driven ONLY by the top-right zoom slider (_setAigBand).
   // Scroll-to-zoom-into-a-card was removed intentionally — hijacking the wheel
@@ -11098,26 +14188,106 @@
       ? base + '/reports/investigation-' + encodeURIComponent(name) + '.html'
       : '/api/investigation-report/' + encodeURIComponent(name);
   }
-  function _downloadInvestigationReport(name) {
+  // The pre-baked PDF in a static bundle (publish.py renders it with headless
+  // Chromium when available). Only meaningful in snapshot mode.
+  function _investigationReportPdfUrl(name) {
+    var cfg = window.__DASH_CONFIG__ || {};
+    var base = cfg.basePath || '';
+    return base + '/reports/investigation-' + encodeURIComponent(name) + '.pdf';
+  }
+  // In-flight exports keyed by `${name}|${fmt}`. We guard only against firing the
+  // SAME export twice (the "downloaded it 3×" bug) — different exports can run
+  // concurrently, and the Export dropdown stays enabled so you can pick another
+  // item while one is still rendering. Progress is surfaced via toasts, not by
+  // disabling the menu.
+  var _invReportInflight = {};
+  function _downloadInvestigationReport(name, fmt) {
     name = name || window._wsInvestigation || window._currentIset;
     if (!name) {
       console.warn('_downloadInvestigationReport: no current investigation');
       return;
     }
+    fmt = (fmt === 'pdf') ? 'pdf' : 'html';
     var cfg = window.__DASH_CONFIG__ || {};
-    // Live: hit the endpoint with ?download=1 so the server sends
-    // Content-Disposition: attachment and the browser saves it. Snapshot: the
-    // pre-rendered static file, downloaded via the anchor's `download` attr.
-    var url = _investigationReportUrl(name) + (cfg.mode === 'snapshot' ? '' : '?download=1');
-    var a = document.createElement('a');
-    a.href = url;
-    a.download = 'investigation-' + name + '.html';
-    a.rel = 'noopener';
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
+    var _save = function (href, dl) {
+      var a = document.createElement('a');
+      a.href = href; a.download = dl; a.rel = 'noopener';
+      document.body.appendChild(a); a.click(); a.remove();
+    };
+    // Static snapshot: both the HTML and the (pre-baked) PDF report are plain files
+    // in the bundle — serve the requested one directly, no server render. The PDF
+    // is baked at publish time only when headless Chromium was available there; if
+    // it's missing, fall back to the HTML rather than downloading a 404 page named
+    // ".pdf" (which the OS then rejects as a corrupt file).
+    if (cfg.mode === 'snapshot') {
+      if (fmt === 'pdf') {
+        var _pdfUrl = _investigationReportPdfUrl(name);
+        fetch(_pdfUrl, { method: 'HEAD' })
+          .then(function (r) {
+            if (r && r.ok) { _save(_pdfUrl, 'investigation-' + name + '.pdf'); return; }
+            if (typeof _showToast === 'function') _showToast('PDF isn’t available in this read-only snapshot — downloading the HTML report instead');
+            _save(_investigationReportUrl(name), 'investigation-' + name + '.html');
+          })
+          .catch(function () { _save(_investigationReportUrl(name), 'investigation-' + name + '.html'); });
+        return;
+      }
+      _save(_investigationReportUrl(name), 'investigation-' + name + '.html');
+      return;
+    }
+    // Live report (HTML or PDF): the server renders a LARGE self-contained file
+    // (every figure inlined; PDF also goes through headless Chromium), which
+    // takes several seconds. Only block a duplicate of the SAME export.
+    var key = name + '|' + fmt;
+    var isPdf = (fmt === 'pdf');
+    if (_invReportInflight[key]) {
+      if (typeof _showToast === 'function') _showToast((isPdf ? 'PDF' : 'Report') + ' is still being prepared — one moment…');
+      return;
+    }
+    _invReportInflight[key] = true;
+    var ext = isPdf ? '.pdf' : '.html';
+    if (typeof _showToast === 'function')
+      _showToast(isPdf ? 'Rendering PDF… this can take ~20s (you can start another export meanwhile)' : 'Preparing report… (a large self-contained file)');
+    fetch(_investigationReportUrl(name) + (isPdf ? '?format=pdf' : ''))
+      .then(function (r) {
+        if (!r.ok) return r.text().then(function (t) { throw new Error(t || ('HTTP ' + r.status)); });
+        return r.blob();
+      })
+      .then(function (blob) {
+        var u = URL.createObjectURL(blob);
+        _save(u, 'investigation-' + name + ext);
+        setTimeout(function () { URL.revokeObjectURL(u); }, 8000);
+        if (typeof _showToast === 'function') _showToast((isPdf ? 'PDF' : 'Report') + ' downloaded.');
+      })
+      .catch(function (e) {
+        var m = (e && e.message) || String(e);
+        if (typeof _showToast === 'function') _showToast((isPdf ? 'PDF export' : 'Report') + ' failed: ' + m, { danger: true });
+        else alert((isPdf ? 'PDF export' : 'Report download') + ' failed:\n' + m);
+      })
+      .then(function () {   // finally — clear this export's in-flight flag
+        delete _invReportInflight[key];
+      });
   }
   window._downloadInvestigationReport = _downloadInvestigationReport;
+
+  // "↓ report ▾" chooser (HTML / PDF) in the investigation header.
+  function _toggleInvReportMenu(ev) {
+    if (ev) ev.stopPropagation();
+    var m = document.getElementById('inv-report-menu');
+    if (!m) return;
+    var open = m.style.display !== 'none';
+    m.style.display = open ? 'none' : 'block';
+    if (!open) {
+      setTimeout(function () {
+        document.addEventListener('click', _closeInvReportMenu, { once: true, capture: true });
+      }, 0);
+    }
+  }
+  function _closeInvReportMenu() {
+    var m = document.getElementById('inv-report-menu');
+    if (m) m.style.display = 'none';
+  }
+  window._toggleInvReportMenu = _toggleInvReportMenu;
+  window._closeInvReportMenu = _closeInvReportMenu;
 
   // Per-card actions on the Investigations LIST (don't require opening the
   // investigation) — open the report for the named investigation directly.
@@ -11181,8 +14351,8 @@
     // simply absent (404). A bare `<a download>` to a 404 silently does nothing,
     // which reads as a broken button. Fetch first: download the blob when it
     // exists, otherwise tell the user why there's nothing to grab.
-    function _notify(msg) {
-      if (typeof _showToast === 'function') _showToast(msg); else window.alert(msg);
+    function _notify(msg, opts) {
+      if (typeof _showToast === 'function') _showToast(msg, opts); else window.alert(msg);
     }
     fetch(url).then(function (r) {
       if (!r.ok) {
@@ -11199,15 +14369,8 @@
       document.body.appendChild(a); a.click(); document.body.removeChild(a);
       window.setTimeout(function () { URL.revokeObjectURL(href); }, 1000);
     }).catch(function (e) {
-      _notify('Figures download failed: ' + e);
+      _notify('Figures download failed: ' + e, { danger: true });
     });
-  };
-  // A study's ↓ notebook is its parent investigation's runnable notebook (there
-  // is no per-study notebook). In the graph the parent is the open investigation.
-  window._vivStudyNotebookFromCard = function (ev, slug) {
-    if (ev) ev.stopPropagation();
-    var inv = window._wsInvestigation || window._currentIset || '';
-    if (inv && window._vivNotebookFromCard) window._vivNotebookFromCard(ev, inv);
   };
   // ▶ run — launch a study's CURRENT baseline spec as a new run (live only).
   window._vivRunStudyFromRow = function (ev, slug) {
@@ -11467,6 +14630,11 @@
   // "needs work" verdict pill are wrong for them.
   function _isInformationalStudy(s) {
     if (!s || typeof s !== 'object') return false;
+    // Canonical marker first (study_type / kind), so a study need not carry a
+    // report block to be flagged informational; report.verdict is kept below only
+    // for back-compat with studies authored before the report.* collapse.
+    var kind = String(s.study_type || s.kind || '').trim().toLowerCase();
+    if (kind === 'informational' || kind === 'descriptive' || kind === 'reference') return true;
     var verdict = String(((s.report || {}).verdict) || s.verdict || '').trim().toLowerCase();
     if (verdict === 'informational' || verdict === 'descriptive') return true;
     var gate = String(s.gate_status || '').trim().toLowerCase();
@@ -12142,10 +15310,7 @@
   // Back-compat shim for any old callers (sidebar groups still use this).
   // The investigation a study belongs to (from the iset index), or '' if none.
   function _investigationForStudy(slug) {
-    var iset = (window._isetIndex || []).find(function(i) {
-      return (i.studies || []).indexOf(slug) !== -1;
-    });
-    return iset ? iset.name : '';
+    return _investigationForStudyMap()[slug] || '';   // O(1) reverse lookup
   }
 
   // Is `slug` a member of investigation `invName`? Used so opening a study from
@@ -12153,13 +15318,34 @@
   // several investigations; _investigationForStudy returns only the FIRST).
   function _studyInInvestigation(slug, invName) {
     if (!invName) return false;
-    var iset = (window._isetIndex || []).find(function(i) { return i.name === invName; });
+    var iset = _isetByName()[invName];   // O(1)
     return !!(iset && (iset.studies || []).indexOf(slug) !== -1);
   }
   window._studyInInvestigation = _studyInInvestigation;
   window._investigationForStudy = _investigationForStudy;
 
   function _openStudyEmbeddedNewTab(name, tab) {
+    // In a popped-out Studies panel window there is no investigation content to
+    // show here — route the navigation to the opener (the main window) so the
+    // popped-out list CONTROLS the main window's selected study, and reflect the
+    // selection in this window's own list.
+    try {
+      if (document.body && document.body.classList.contains('viv-popout') &&
+          window.opener && !window.opener.closed &&
+          typeof window.opener._openStudyEmbeddedNewTab === 'function') {
+        window.opener._openStudyEmbeddedNewTab(name, tab);
+        // Opening a study from the GRAPH popout surfaces it in the opener (main
+        // window), which now has room since the graph vacated the inset — bring
+        // that window forward so the open is visible. (Studies popout keeps its
+        // quiet "controls the main window" behavior and does NOT steal focus.)
+        try {
+          if (document.body.classList.contains('viv-popout-graph') &&
+              window.opener && window.opener.focus) window.opener.focus();
+        } catch (e) { /* ignore */ }
+        _selectStudyInRail(name);
+        return;
+      }
+    } catch (e) { /* cross-origin / closed opener — fall back to local nav */ }
     // Single router: show the study's OWN investigation workspace, then
     // open/focus its study tab. Never the legacy icon view, never full-window nav.
     // Optional `tab` deep-links the porthole to a study sub-tab (e.g. conclusions).
@@ -12182,7 +15368,8 @@
       var view = document.getElementById('investigation-detail-view');
       if (view && view.parentNode === ctx) view.style.display = 'none';
       else if (ctx) ctx.innerHTML = '';
-      var t = document.getElementById('ws-title'); if (t) t.textContent = 'Study: ' + name;
+      var t = document.getElementById('ws-title'); if (t) { t.textContent = name; t.title = name; }
+      var tk = document.getElementById('ws-title-kicker'); if (tk) tk.textContent = 'Study';
       var a = document.getElementById('ws-actions'); if (a) a.innerHTML = '';
       _wsResetStudyTabs(null);
       _wsOpenStudyTab(name, tab);
@@ -12200,9 +15387,8 @@
     var sel = '.viv-rail-sublink[data-study-name="' +
       (window.CSS && CSS.escape ? CSS.escape(name) : name) + '"]';
     var leaf = document.querySelector(sel);
-    if (!leaf) return;
+    if (!leaf) { _renderRailStudyStepper(null); return; }
     leaf.classList.add('rail-study-active');
-    leaf.style.background = '#eef2ff';
     // If its investigation group is collapsed, expand it so the leaf is visible.
     var grp = leaf.closest('[data-rail-group], .viv-rail-investigations-group');
     if (grp && grp.classList.contains('collapsed') &&
@@ -12211,6 +15397,115 @@
       if (hdr) _vivToggleInvGroup(hdr);
     }
     try { leaf.scrollIntoView({ block: 'nearest' }); } catch (e) { /* ignore */ }
+    _renderRailStudyStepper(leaf);
+  }
+
+  // The tab currently open in the study porthole, so stepping to another study
+  // re-opens it on the SAME tab. _setStudyTab (study-detail.js) postMessages the
+  // active tab up on every switch; fall back to reading the iframe directly.
+  window._wsStudyTabs = window._wsStudyTabs || {};
+  function _currentStudyTab() {
+    if (window._wsStudyTabs && window._wsStudyTabs.tab) return window._wsStudyTabs.tab;
+    try {
+      var f = document.getElementById('ws-study-frame');
+      var p = f && f.contentWindow && f.contentWindow.document.querySelector('.study-pillar.active');
+      if (p && p.dataset && p.dataset.kind) return p.dataset.kind;
+    } catch (e) { /* cross-frame — ignore */ }
+    return undefined;
+  }
+  window._currentStudyTab = _currentStudyTab;
+  window.addEventListener('message', function (ev) {
+    if (ev && ev.data && typeof ev.data === 'object' && ev.data._vwStudyTab) {
+      window._wsStudyTabs = window._wsStudyTabs || {};
+      window._wsStudyTabs.tab = ev.data._vwStudyTab;
+      _updateRailStepperPosition();   // keep the stepper's tab hint fresh
+    }
+  });
+  // Keyboard: Alt+↑ / Alt+↓ step through studies (keeping the open tab), as long
+  // as a study is open and you're not typing in a field.
+  document.addEventListener('keydown', function (ev) {
+    if (!ev.altKey || ev.ctrlKey || ev.metaKey) return;
+    if (ev.key !== 'ArrowUp' && ev.key !== 'ArrowDown') return;
+    var t = ev.target;
+    if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) return;
+    if (!document.querySelector('.viv-rail-sublink.rail-study-active')) return;
+    ev.preventDefault();
+    window._railStepStudy(ev.key === 'ArrowUp' ? -1 : 1);
+  });
+
+  // The study leaves of the currently-open study's rail group, in display order.
+  function _railStudySiblings(activeLeaf) {
+    // The active study's group; with none selected, fall back to the first
+    // investigation group (else every study leaf in the rail) so the stepper can
+    // start from the top.
+    var grp = activeLeaf ? activeLeaf.closest('.viv-rail-investigations-group') : null;
+    if (!grp) {
+      grp = document.querySelector('#viv-rail-investigations .viv-rail-investigations-group') ||
+            document.getElementById('viv-rail-investigations');
+    }
+    if (!grp) return [];
+    return Array.prototype.slice.call(grp.querySelectorAll('.viv-rail-sublink[data-study-name]'));
+  }
+  // Step to the previous (dir<0) / next (dir>0) study, keeping the same open tab.
+  // With no study selected, ▼ opens the first study and ▲ opens the last.
+  window._railStepStudy = function (dir) {
+    var active = document.querySelector('.viv-rail-sublink.rail-study-active[data-study-name]');
+    var leaves = _railStudySiblings(active);
+    if (!leaves.length) return;
+    var i = active ? leaves.indexOf(active) : -1;
+    var j = (i < 0) ? (dir < 0 ? leaves.length - 1 : 0) : i + (dir < 0 ? -1 : 1);
+    if (j < 0 || j >= leaves.length) return;
+    var slug = leaves[j].getAttribute('data-study-name');
+    if (slug && window._openStudyEmbeddedNewTab) window._openStudyEmbeddedNewTab(slug, _currentStudyTab());
+  };
+
+  // A compact prev/next stepper pinned at the top of the Studies rail. Always
+  // visible once the study list is present (not only when a study is selected):
+  // ▲/▼ walk the current investigation's studies (keeping the open tab), with an
+  // "n / N" position readout ("– / N" when nothing is selected yet).
+  function _renderRailStudyStepper(activeLeaf) {
+    var host = document.getElementById('viv-rail-investigations');
+    if (!host) return;
+    var bar = document.getElementById('viv-rail-study-stepper');
+    if (!bar) {
+      bar = document.createElement('div');
+      bar.id = 'viv-rail-study-stepper';
+      // Full-width opaque band (sticky, pins to the top of the scroll region);
+      // the bordered card lives inside so the study list scrolls cleanly beneath.
+      bar.innerHTML =
+        '<div class="viv-rail-step-card">' +
+          '<button type="button" id="viv-rail-step-prev" title="Previous study (keeps the open tab)" aria-label="Previous study">▲</button>' +
+          '<span id="viv-rail-step-pos" title="Study position in this investigation"></span>' +
+          '<button type="button" id="viv-rail-step-next" title="Next study (keeps the open tab)" aria-label="Next study">▼</button>' +
+        '</div>';
+      host.parentNode.insertBefore(bar, host);
+      bar.querySelector('#viv-rail-step-prev').addEventListener('click', function () { window._railStepStudy(-1); });
+      bar.querySelector('#viv-rail-step-next').addEventListener('click', function () { window._railStepStudy(1); });
+    }
+    // Prefer to sit on the SAME row as the search field (one compact bar); fall
+    // back to a band above the list when there's no search head.
+    var searchHead = document.getElementById('viv-rail-studies-head');
+    if (searchHead && bar.parentNode !== searchHead) searchHead.appendChild(bar);
+    else if (!searchHead && bar.parentNode !== host.parentNode) host.parentNode.insertBefore(bar, host);
+    _updateRailStepperPosition();
+  }
+  // Exposed so the Studies panel can mount the stepper as soon as the list renders
+  // (independent of any study being selected).
+  window._renderRailStudyStepper = _renderRailStudyStepper;
+  function _updateRailStepperPosition() {
+    var bar = document.getElementById('viv-rail-study-stepper');
+    if (!bar) return;
+    var active = document.querySelector('.viv-rail-sublink.rail-study-active[data-study-name]');
+    var leaves = _railStudySiblings(active);
+    var i = active ? leaves.indexOf(active) : -1;
+    var n = leaves.length;
+    var prev = bar.querySelector('#viv-rail-step-prev');
+    var next = bar.querySelector('#viv-rail-step-next');
+    var pos = bar.querySelector('#viv-rail-step-pos');
+    // With nothing selected (i<0) both arrows are live (▼ → first, ▲ → last).
+    if (prev) prev.disabled = (n === 0) || (i === 0);
+    if (next) next.disabled = (n === 0) || (i >= 0 && i >= n - 1);
+    if (pos) pos.textContent = n ? ((i >= 0 ? (i + 1) : '–') + ' / ' + n) : '';
   }
   window._selectStudyInRail = _selectStudyInRail;
 
@@ -12244,33 +15539,171 @@
   }
   window._toggleStudyPin = _toggleStudyPin;
 
-  // Single-row per study: [dot] name [pin]. Full status string in tooltip. The
-  // pin toggle sits at the right; clicking it pins/unpins without opening the
-  // study (stopPropagation). Used by the grouped, pinned, and ungrouped layouts.
+  // ── Rail drag-to-reorder (investigations + studies) ───────────────────────
+  // Replaces pinning: the user drags investigation groups and studies into any
+  // order; the order is remembered per-browser (localStorage, like every other
+  // rail preference). `viv.invOrder` is the investigation order (iset names);
+  // `viv.studyOrder` maps an iset name -> its studies' slug order. Items with no
+  // saved position keep the default sort (MRU / topological depth) after the
+  // explicitly-ordered ones, so a fresh workspace reads sensibly.
+  function _loadInvOrder() {
+    try { var a = JSON.parse(window.localStorage.getItem('viv.invOrder') || '[]'); return Array.isArray(a) ? a : []; }
+    catch (e) { return []; }
+  }
+  function _saveInvOrder(order) {
+    try { window.localStorage.setItem('viv.invOrder', JSON.stringify(order)); } catch (e) { /* private mode */ }
+  }
+  function _loadStudyOrder() {
+    try { var o = JSON.parse(window.localStorage.getItem('viv.studyOrder') || '{}'); return (o && typeof o === 'object') ? o : {}; }
+    catch (e) { return {}; }
+  }
+  function _saveStudyOrder(map) {
+    try { window.localStorage.setItem('viv.studyOrder', JSON.stringify(map)); } catch (e) { /* private mode */ }
+  }
+  // Stable sort of `items` (each with `.name`) by a saved order array: names in
+  // `order` come first in that order, the rest keep `fallbackCmp`, appended.
+  function _applyUserOrder(items, order, fallbackCmp) {
+    var idx = {};
+    (order || []).forEach(function (n, i) { idx[n] = i; });
+    return items.slice().sort(function (a, b) {
+      var ia = idx[a.name], ib = idx[b.name];
+      var aIn = ia !== undefined, bIn = ib !== undefined;
+      if (aIn && bIn) return ia - ib;
+      if (aIn !== bIn) return aIn ? -1 : 1;
+      return fallbackCmp(a, b);
+    });
+  }
+
+  // The element the dragged item should be inserted BEFORE, given the pointer Y
+  // — the standard flexless HTML5 sortable computation.
+  function _dragAfterElement(container, sel, y) {
+    var els = Array.prototype.slice.call(container.querySelectorAll(sel + ':not(.viv-rail-dragging)'));
+    var closest = { offset: Number.NEGATIVE_INFINITY, el: null };
+    els.forEach(function (child) {
+      var box = child.getBoundingClientRect();
+      var offset = y - box.top - box.height / 2;
+      if (offset < 0 && offset > closest.offset) closest = { offset: offset, el: child };
+    });
+    return closest.el;
+  }
+  // Wire a drag-to-reorder scope: dragging any element matching `handleSel`
+  // reorders the `itemSel` items within `container` live; `onDrop` fires with the
+  // new DOM order once the drag ends. `moveSel` maps a handle to the element that
+  // actually moves (its closest itemSel ancestor).
+  function _wireSortable(container, handleSel, itemSel, onDrop) {
+    if (!container || container.__vivSortable) return;
+    container.__vivSortable = true;
+    var dragEl = null;
+    var _dragRaf = 0, _dragY = 0;    // coalesce dragover geometry reads to one per frame
+    container.addEventListener('dragstart', function (e) {
+      var handle = e.target.closest ? e.target.closest(handleSel) : null;
+      if (!handle) return;
+      var item = handle.closest(itemSel);
+      if (!item || !container.contains(item)) return;
+      dragEl = item;
+      item.classList.add('viv-rail-dragging');
+      e.dataTransfer.effectAllowed = 'move';
+      try { e.dataTransfer.setData('text/plain', ''); } catch (_) { /* Firefox needs a payload */ }
+      e.stopPropagation();  // don't let a nested scope (studies) also start a group drag
+    });
+    container.addEventListener('dragover', function (e) {
+      if (!dragEl || !container.contains(dragEl)) return;
+      e.preventDefault();
+      e.stopPropagation();
+      // _dragAfterElement reads getBoundingClientRect() for every row (a forced
+      // reflow). dragover fires continuously, so coalesce to one reposition per
+      // animation frame instead of per event — smooth even with many rows.
+      _dragY = e.clientY;
+      if (_dragRaf) return;
+      _dragRaf = requestAnimationFrame(function () {
+        _dragRaf = 0;
+        if (!dragEl || !container.contains(dragEl)) return;
+        var after = _dragAfterElement(container, itemSel, _dragY);
+        if (after == null) container.appendChild(dragEl);
+        else if (after !== dragEl) container.insertBefore(dragEl, after);
+      });
+    });
+    container.addEventListener('drop', function (e) { if (dragEl) { e.preventDefault(); e.stopPropagation(); } });
+    container.addEventListener('dragend', function () {
+      if (_dragRaf) { cancelAnimationFrame(_dragRaf); _dragRaf = 0; }
+      if (!dragEl) return;
+      dragEl.classList.remove('viv-rail-dragging');
+      dragEl = null;
+      if (typeof onDrop === 'function') onDrop();
+    });
+  }
+  // After each rail render, make the investigation groups and each group's
+  // studies drag-sortable, persisting the new order.
+  function _wireRailDnd() {
+    var host = document.getElementById('viv-rail-investigations');
+    if (!host) return;
+    // Investigation groups (exclude the "Ungrouped" folder — it has no stable id).
+    _wireSortable(
+      host, '.viv-rail-grip-inv', '.viv-rail-investigations-group[data-iset]',
+      function () {
+        var names = Array.prototype.slice
+          .call(host.querySelectorAll('.viv-rail-investigations-group[data-iset]'))
+          .map(function (el) { return el.getAttribute('data-iset'); })
+          .filter(function (n) { return n && n !== '__ungrouped__'; });
+        _saveInvOrder(names);
+        _renderRailInvestigationGroups();
+      }
+    );
+    // Studies within each group.
+    host.querySelectorAll('.viv-rail-investigations-group[data-iset] .viv-rail-investigations-group-items')
+      .forEach(function (items) {
+        var group = items.closest('.viv-rail-investigations-group');
+        var iset = group && group.getAttribute('data-iset');
+        if (!iset || iset === '__ungrouped__') return;
+        _wireSortable(items, '.viv-rail-grip-study', '.viv-rail-sublink[data-study-name]', function () {
+          var slugs = Array.prototype.slice
+            .call(items.querySelectorAll('.viv-rail-sublink[data-study-name]'))
+            .map(function (el) { return el.getAttribute('data-study-name'); })
+            .filter(Boolean);
+          var map = _loadStudyOrder();
+          map[iset] = slugs;
+          _saveStudyOrder(map);
+          _renderRailInvestigationGroups();
+        });
+      });
+  }
+
+  // A drag grip (⠿) shown at the left of a reorderable row on hover.
+  function _railGrip(cls) {
+    return '<span class="viv-rail-grip ' + cls + '" draggable="true" aria-hidden="true"'
+      + ' title="Drag to reorder"'
+      + ' onclick="event.preventDefault();event.stopPropagation();return false;">'
+      + '<svg viewBox="0 0 10 16" width="10" height="16" fill="currentColor">'
+      + '<circle cx="2.5" cy="3" r="1.3"/><circle cx="7.5" cy="3" r="1.3"/>'
+      + '<circle cx="2.5" cy="8" r="1.3"/><circle cx="7.5" cy="8" r="1.3"/>'
+      + '<circle cx="2.5" cy="13" r="1.3"/><circle cx="7.5" cy="13" r="1.3"/></svg></span>';
+  }
+
+  // Single-row per study: [grip] [dot] name. Full status string in tooltip.
+  // Used by the grouped and ungrouped layouts.
   function _railStudyItem(s, opts) {
     opts = opts || {};
-    // Unified status source (see _studyStatusMeta) so the rail dot agrees with the
-    // investigation-graph card + legend. Was _railStatusColor(s.status) — a separate
-    // 4th color map that showed `blocked` red while the card showed amber.
-    var _sm = _studyStatusMeta(s);
+    // Two-axis source so the rail dot agrees with the investigation-graph card:
+    // the verdict when the study has one, otherwise the execution-progress color.
+    // Never null (the graph card uses the same _verdictMeta || _execMeta pair).
+    var _sm = _verdictMeta(s) || _execMeta(s);
     var status = _sm.label;
     var color = _sm.color;
-    var indent = opts.indent ? '28px' : '12px';
+    var indent = opts.indent ? '16px' : '8px';
     var fontSize = opts.indent ? '0.85em' : '0.86em';
     var nameColor = opts.indent ? '#64748b' : '#374151';
-    var pinned = _isStudyPinned(s.name);
     var tip = _esc(s.name) + ' — ' + _esc(status) + (s.blocked ? ' (blocked)' : '');
-    var pinBtn = '<span class="viv-rail-pin' + (pinned ? ' pinned' : '') + '" role="button" tabindex="0" ' +
-           'aria-label="' + (pinned ? 'Unpin study' : 'Pin study to top') + '" ' +
-           'title="' + (pinned ? 'Unpin' : 'Pin to top') + '" ' +
-           'onclick="event.preventDefault();event.stopPropagation();_toggleStudyPin(\'' + _esc(s.name) + '\');return false;">📌</span>';
-    return '<a class="viv-rail-sublink' + (pinned ? ' viv-rail-sublink-pinned' : '') + '" data-study-name="' + _esc(s.name) + '" ' +
-           'onclick="event.preventDefault();_openStudyEmbeddedNewTab(\'' + _esc(s.name) + '\');return false;" ' +
+    var grip = opts.orderable ? _railGrip('viv-rail-grip-study') : '';
+    // Stamp the precomputed (lowercased) search haystack so the live filter can
+    // show/hide this row by a substring scan without rebuilding any DOM.
+    var hay = _esc(_studyHay(s, opts.groupTitle));
+    return '<a class="viv-rail-sublink" data-study-name="' + _esc(s.name) + '" data-rail-hay="' + hay + '" draggable="false" ' +
+           'onclick="event.preventDefault();_openStudyEmbeddedNewTab(\'' + _esc(s.name) + '\', (document.querySelector(\'.viv-rail-sublink.rail-study-active\') && typeof _currentStudyTab===\'function\') ? _currentStudyTab() : undefined);return false;" ' +
            'href="#" title="' + tip + '" ' +
-           'style="display:flex;align-items:center;gap:8px;padding:4px 14px 4px ' + indent + ';color:' + nameColor + ';text-decoration:none;font-size:' + fontSize + ';">' +
+           'style="display:flex;align-items:center;gap:6px;padding:4px 14px 4px ' + indent + ';color:' + nameColor + ';text-decoration:none;font-size:' + fontSize + ';">' +
+             grip +
              '<span aria-hidden="true" style="flex:none;width:8px;height:8px;border-radius:50%;background:' + color + ';display:inline-block"></span>' +
-             '<span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1">' + _esc(s.name) + '</span>' +
-             pinBtn +
+             '<span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1">' + _esc(s.title || s.name) + '</span>' +
            '</a>';
   }
 
@@ -12283,30 +15716,35 @@
     if (!Array.isArray(window._investigations) || !window._investigations.length) {
       // No studies in memory yet → fall back to the legacy render until they arrive.
       if (typeof _renderRailInvestigationsLegacy === 'function') return _renderRailInvestigationsLegacy();
-      host.innerHTML = '<p class="viv-rail-empty" style="font-size:0.85em;color:#9ca3af;padding:4px 12px">Loading…</p>';
+      if (window.ProgressTrack) {
+        window.ProgressTrack.loading(host);
+        host.firstElementChild.classList.add('viv-loading-compact');
+      } else {
+        host.innerHTML = '<p class="viv-rail-empty" style="font-size:0.85em;color:#9ca3af;padding:4px 12px">Loading…</p>';
+      }
       if (typeof _loadInvestigations === 'function') _loadInvestigations();
       return;
     }
 
-    var memberSet = {};         // studySlug -> [isetName, ...]
-    window._isetIndex.forEach(function(iset) {
-      (iset.studies || []).forEach(function(slug) {
-        (memberSet[slug] = memberSet[slug] || []).push(iset.name);
-      });
-    });
-
     // Group studies: each iset gets its members; leftovers go to "Ungrouped".
     var groups = [];   // [{name, title, studies: [study, ...]}]
     var seen = {};
+    var _studyOrderMap = _loadStudyOrder();
+    // Index studies by name ONCE so membership resolution is O(1) per slug. A
+    // per-slug Array.find made every rail render O(N^2) — the dominant cost of a
+    // rebuild on large workspaces (e.g. sms-ecoli).
+    var _studyByName = {};
+    (window._investigations || []).forEach(function(s) { _studyByName[s.name] = s; });
     window._isetIndex.forEach(function(iset) {
       var members = (iset.studies || [])
-        .map(function(slug) { return window._investigations.find(function(s) { return s.name === slug; }); })
+        .map(function(slug) { return _studyByName[slug]; })
         .filter(Boolean);
       members.forEach(function(s) { seen[s.name] = true; });
-      // Sort within group by topological depth (the same map computed in
-      // _renderInvestigations); if unavailable, fall back to alpha.
+      // Order within group: the user's saved drag order first, then anything
+      // unmoved by topological depth (the same map computed in
+      // _renderInvestigations), falling back to alpha.
       var depthMap = window._investigationsDepth || {};
-      members.sort(function(a, b) {
+      members = _applyUserOrder(members, _studyOrderMap[iset.name], function(a, b) {
         var da = depthMap[a.name] || 0, db = depthMap[b.name] || 0;
         return da - db || a.name.localeCompare(b.name);
       });
@@ -12323,15 +15761,37 @@
     // Order: pinned first (in pin order), then most-recently-opened, then the
     // never-opened rest by topological depth then title. The active
     // investigation was just opened so MRU floats it to the top of the unpinned.
+    // Order: the user's saved drag order first; anything they haven't moved
+    // falls back to most-recently-opened, then topological depth / title.
     var _mru = _loadInvMru();
-    var _pins = _loadPinnedInvestigations();
-    var ordered = groups.slice().sort(function(a, b) {
-      var ap = _pins.indexOf(a.name), bp = _pins.indexOf(b.name);
-      var aP = ap !== -1, bP = bp !== -1;
-      if (aP !== bP) return aP ? -1 : 1;
-      if (aP && bP) return ap - bp;
+    var _invOrder = _loadInvOrder();
+    // Preserve the CURRENT on-screen order AND open/collapsed state across a
+    // re-render: a group already in the rail keeps its position and its
+    // expanded-ness, so navigating to a study never reshuffles the list or closes
+    // another open investigation ("stay where I put them"). Only groups new to the
+    // rail (first load, a freshly-created investigation) fall back to the saved /
+    // default state below.
+    var _domOrder = {};
+    var _domCollapsed = {};
+    (function () {
+      var _i = 0;
+      var _host = document.getElementById('viv-rail-investigations');
+      if (_host) {
+        _host.querySelectorAll('.viv-rail-investigations-group[data-iset]').forEach(function (el) {
+          var k = el.getAttribute('data-iset');
+          if (k && !(k in _domOrder)) {
+            _domOrder[k] = _i++;
+            _domCollapsed[k] = el.classList.contains('collapsed');
+          }
+        });
+      }
+    })();
+    var ordered = _applyUserOrder(groups, _invOrder, function(a, b) {
+      var ao = (a.name in _domOrder) ? _domOrder[a.name] : Infinity;
+      var bo = (b.name in _domOrder) ? _domOrder[b.name] : Infinity;
+      if (ao !== bo) return ao - bo;   // keep the order the user is already seeing
       var am = _mru[a.name] || 0, bm = _mru[b.name] || 0;
-      if (am !== bm) return bm - am;   // most-recently-opened first
+      if (am !== bm) return bm - am;   // new groups: most-recently-opened first
       var da = railDepthMap[a.name] || 0, db = railDepthMap[b.name] || 0;
       return da - db || String(a.title || a.name).localeCompare(String(b.title || b.name));
     });
@@ -12342,35 +15802,47 @@
     var ungrouped = window._investigations.filter(function(s) { return !seen[s.name]; });
     ungrouped.sort(function(a, b) { return String(a.name).localeCompare(String(b.name)); });
 
-    if (!window._pinnedStudies) _loadPinnedStudies();
     var hasActive = ordered.some(function(g) { return g.name === currentSlug; });
 
+    var _invExpandedState = _loadInvExpanded();
     function _railGroupHtml(g, forceOpen) {
       var isActive = g.name === currentSlug;
-      // Collapsed unless active, or the caller forces it open (first group when
-      // there is no active investigation), so the rail opens on something.
-      var collapsed = (isActive || forceOpen) ? '' : ' collapsed';
+      // Open/collapsed precedence, most-authoritative first:
+      //   1. the ACTIVE investigation always opens — navigating to it must reveal
+      //      its studies;
+      //   2. any OTHER group keeps its CURRENT on-screen state — so navigating
+      //      never closes another open investigation or reopens a collapsed one
+      //      ("stay where I put them");
+      //   3. on a fresh load (nothing on screen yet) restore the user's PERSISTED
+      //      toggle (localStorage);
+      //   4. otherwise the default: open the forced-first group, else collapsed.
+      var _dom = _domCollapsed[g.name];
+      var _saved = _invExpandedState[g.name];
+      var _open = isActive ? true
+                : (_dom !== undefined) ? !_dom
+                : (_saved !== undefined) ? _saved
+                : forceOpen;
+      var collapsed = _open ? '' : ' collapsed';
+      // Remember the default collapse state so the live filter can restore it when
+      // the search is cleared (it force-opens matching groups while searching).
+      var defaultCollapsed = collapsed ? ' data-default-collapsed="1"' : '';
       var activeCls = isActive ? ' rail-iset-active' : '';
       var clickName = g._ungrouped
         ? ''
         : ' onclick="window._railOpenInvestigationDetail(\'' + _esc(g.name) + '\');event.stopPropagation();"';
       var nameStyle = g._ungrouped ? '' : 'cursor:pointer;';
-      return '<div class="viv-rail-investigations-group' + collapsed + activeCls + '" data-iset="' + _esc(g.name) + '">'
+      return '<div class="viv-rail-investigations-group' + collapsed + activeCls + '" data-iset="' + _esc(g.name) + '"' + defaultCollapsed + '>'
         + '<div class="viv-rail-investigations-group-header" onclick="_vivToggleInvGroup(this)"'
         + ' title="' + _esc(g.title || g.name) + (g._ungrouped ? '' : ' — open investigation') + '">'
+        + (g._ungrouped ? '' : _railGrip('viv-rail-grip-inv'))
         + '<span class="viv-rail-investigations-group-arrow viv-arrow">▾</span>'
         + '<span class="viv-rail-investigations-group-name" style="' + nameStyle + '"' + clickName + '>'
         + _esc(g.title || g.name) + '</span>'
-        + (g._ungrouped ? '' :
-            '<span class="viv-rail-pin viv-rail-inv-pin' + (_isInvestigationPinned(g.name) ? ' pinned' : '') + '"'
-            + ' role="button" tabindex="0"'
-            + ' title="' + (_isInvestigationPinned(g.name) ? 'Unpin investigation' : 'Pin investigation to top') + '"'
-            + ' onclick="event.preventDefault();event.stopPropagation();_toggleInvestigationPin(\'' + _esc(g.name) + '\');return false;">📌</span>')
         + '<span class="viv-rail-investigations-group-count">' + g.studies.length + '</span>'
         + '</div>'
         + '<div class="viv-rail-investigations-group-items">'
         + (g.studies.length
-            ? g.studies.map(function(s) { return _railStudyItem(s, { indent: true }); }).join('')
+            ? g.studies.map(function(s) { return _railStudyItem(s, { indent: true, orderable: !g._ungrouped, groupTitle: g.title }); }).join('')
             : '<div class="viv-rail-empty" style="font-size:0.82em;color:#94a3b8;'
               + 'padding:4px 14px 4px 28px;font-style:italic">No studies</div>')
         + '</div>'
@@ -12382,79 +15854,76 @@
     // title), so e.g. "basal simulation" finds the `basal` study in the
     // v2ecoli-vEcoli comparison investigation. While searching, non-matching
     // groups are hidden and matching groups are force-expanded so hits show.
+    // Render the FULL list once (all groups, all studies) with default collapse
+    // states. The live search then shows/hides rows in place (_applyRailStudyFilter),
+    // so typing never rebuilds this DOM — the expensive part on large workspaces.
+    var groupsHtml = ordered.map(function(g, i) {
+      // With no active investigation, open the first group so the rail isn't
+      // entirely collapsed on load.
+      return _railGroupHtml(g, !hasActive && i === 0);
+    }).join('');
+
+    var ungroupedHtml = ungrouped.length
+      ? _railGroupHtml({ name: '__ungrouped__', title: 'Ungrouped', studies: ungrouped, _ungrouped: true }, false)
+      : '';
+
+    host.innerHTML = (groupsHtml + ungroupedHtml)
+      || '<div class="viv-rail-empty" style="font-size:0.85em;color:#94a3b8;'
+       + 'padding:6px 14px;font-style:italic">No studies yet.</div>';
+    _wireRailDnd();                 // the full list is always present → always sortable
+    _applyRailStudyFilter();        // re-apply any active query via show/hide
+  }
+
+  // Apply the current study-search query by showing/hiding already-rendered rows —
+  // NO DOM rebuild. Groups with no visible row are hidden; matching groups are
+  // force-opened; clearing the query restores each group's default collapse state.
+  function _applyRailStudyFilter() {
+    var host = document.getElementById('viv-rail-investigations');
+    if (!host) return;
     var q = (window._railStudyQuery || '').trim().toLowerCase();
     var tokens = q ? q.split(/\s+/) : [];
     var searching = tokens.length > 0;
+    var rail = document.getElementById('viv-rail');
+    if (rail) rail.classList.toggle('viv-rail-searching', searching);
 
-    // AND-first, OR-fallback. Prefer studies matching EVERY token (precise); but
-    // if nothing matches all tokens, fall back to matching ANY token so a natural
-    // phrase like "basal simulation" still surfaces the `basal` study even when
-    // "simulation" appears in none of its fields. Consider grouped + ungrouped.
-    var requireAll = searching && (
-      ordered.some(function(g) {
-        return g.studies.some(function(s) { return _studyMatchesQuery(s, g.title, tokens, true); });
-      }) ||
-      ungrouped.some(function(s) { return _studyMatchesQuery(s, 'Ungrouped', tokens, true); })
-    );
+    var items = Array.prototype.slice.call(host.querySelectorAll('.viv-rail-sublink[data-rail-hay]'));
+    // AND-first, OR-fallback (mirrors the previous render-time semantics): prefer
+    // rows matching EVERY token, but if none do, fall back to matching ANY.
+    var requireAll = searching && items.some(function(el) {
+      return _tokensMatch(el.getAttribute('data-rail-hay') || '', tokens, true);
+    });
+    items.forEach(function(el) {
+      var show = !searching || _tokensMatch(el.getAttribute('data-rail-hay') || '', tokens, requireAll);
+      el.classList.toggle('viv-rail-hidden', !show);
+    });
 
-    // Pinned strip (top): duplicates of pinned studies for quick access. Hidden
-    // while searching so results stay clean. A pinned study still shows in its
-    // own group/ungrouped list below.
-    var pinnedHtml = '';
-    if (!searching && (window._pinnedStudies || []).length) {
-      var pinnedStudies = window._pinnedStudies
-        .map(function(name) {
-          return window._investigations.find(function(s) { return s.name === name; });
-        })
-        .filter(Boolean);
-      if (pinnedStudies.length) {
-        pinnedHtml = '<div class="viv-rail-pinned-section">'
-          + '<div class="viv-rail-section-subheader">Pinned</div>'
-          + pinnedStudies.map(function(s) { return _railStudyItem(s, {}); }).join('')
-          + '</div>';
-      }
-    }
-
-    // Investigation groups (middle).
-    var groupsHtml = ordered.map(function(g, i) {
-      var studies = g.studies;
+    var anyVisible = false;
+    Array.prototype.forEach.call(host.querySelectorAll('.viv-rail-investigations-group'), function(group) {
       if (searching) {
-        studies = g.studies.filter(function(s) {
-          return _studyMatchesQuery(s, g.title, tokens, requireAll);
-        });
-        if (!studies.length) return '';   // hide groups with no match
-        g = { name: g.name, title: g.title, studies: studies };
+        var vis = group.querySelector('.viv-rail-sublink[data-rail-hay]:not(.viv-rail-hidden)');
+        group.classList.toggle('viv-rail-hidden', !vis);
+        if (vis) { group.classList.remove('collapsed'); anyVisible = true; }   // force-open matches
+      } else {
+        group.classList.remove('viv-rail-hidden');
+        group.classList.toggle('collapsed', group.hasAttribute('data-default-collapsed'));
       }
-      // While searching, force groups open so matches are visible. Otherwise:
-      // with no active investigation, open the first group so the rail isn't
-      // entirely collapsed on load.
-      return _railGroupHtml(g, searching || (!hasActive && i === 0));
-    }).join('');
+    });
 
-    // Ungrouped studies (bottom): a collapsible "Ungrouped" folder, like the
-    // investigation groups (collapsed by default; force-open while searching).
-    var ungroupedList = searching
-      ? ungrouped.filter(function(s) { return _studyMatchesQuery(s, 'Ungrouped', tokens, requireAll); })
-      : ungrouped;
-    var ungroupedHtml = '';
-    if (ungroupedList.length) {
-      ungroupedHtml = _railGroupHtml(
-        { name: '__ungrouped__', title: 'Ungrouped', studies: ungroupedList, _ungrouped: true },
-        searching
-      );
+    var note = document.getElementById('viv-rail-nomatch');
+    if (searching && !anyVisible) {
+      if (!note) {
+        note = document.createElement('div');
+        note.id = 'viv-rail-nomatch';
+        note.className = 'viv-rail-empty';
+        note.setAttribute('style', 'font-size:0.85em;color:#94a3b8;padding:6px 14px;font-style:italic');
+        host.appendChild(note);
+      }
+      note.textContent = 'No studies match “' + q + '”.';
+    } else if (note) {
+      note.remove();
     }
-
-    var html = pinnedHtml + groupsHtml + ungroupedHtml;
-
-    if (!html && searching) {
-      html = '<div class="viv-rail-empty" style="font-size:0.85em;color:#94a3b8;'
-           + 'padding:6px 14px;font-style:italic">No studies match “' + _esc(q) + '”.</div>';
-    }
-
-    host.innerHTML = html
-      || '<div class="viv-rail-empty" style="font-size:0.85em;color:#94a3b8;'
-       + 'padding:6px 14px;font-style:italic">No studies yet.</div>';
   }
+  window._applyRailStudyFilter = _applyRailStudyFilter;
 
   // A study matches the rail search when EVERY whitespace-delimited token of the
   // query is a substring of its combined searchable text (study fields + the
@@ -12488,10 +15957,12 @@
     return _tokensMatch(_studyHay(s, groupTitle), tokens, requireAll);
   }
 
-  // Study-search input handler: store the query and re-render the rail groups.
+  // Study-search input handler: record the query and filter in place by showing/
+  // hiding already-rendered rows. No rebuild → cheap enough to run per keystroke
+  // (so no debounce needed), and instant feedback even on large workspaces.
   window._filterRailStudies = function(value) {
     window._railStudyQuery = String(value || '');
-    _renderRailInvestigationGroups();
+    _applyRailStudyFilter();
   };
 
   // Per-workspace localStorage key for the remembered investigation. The URL
@@ -12553,6 +16024,14 @@
   // ── DAG helpers ─────────────────────────────────────────────────────
   // Build a children map (reverse of parent_studies) and a depth map
   // (BFS from roots) for the topological sort + Depends-on/Blocks chips.
+  // Memoized DAG: _renderInvestigations runs on every search keystroke, but the
+  // dependency graph only changes when the investigation list is replaced. Cache it
+  // by array identity so keystroke re-renders don't rebuild the BFS each time.
+  var _dagCache = null, _dagSrc;
+  function _memoInvestigationDag(all) {
+    if (all !== _dagSrc) { _dagSrc = all; _dagCache = _buildInvestigationDag(all); }
+    return _dagCache;
+  }
   function _buildInvestigationDag(all) {
     var childrenMap = {};
     all.forEach(function(inv) { childrenMap[inv.name] = []; });
@@ -12598,7 +16077,7 @@
     var grid = document.getElementById('investigations-grid');
     if (!grid) return;
     var f = window._investigationsFilter;
-    var dag = _buildInvestigationDag(window._investigations);
+    var dag = _memoInvestigationDag(window._investigations);
     window._investigationsChildren = dag.children;
     window._investigationsDepth = dag.depth;
     // Same shared engine + AND-first/OR-fallback as the rail / Investigations tab.
@@ -12780,11 +16259,14 @@
   }
   window._setInvestigationsView = _setInvestigationsView;
 
-  // Search input live-filter
+  // Search input live-filter (debounced: _renderInvestigations rebuilds the whole
+  // grid, so coalesce fast typing into one render).
+  var _invSearchTimer = 0;
   document.addEventListener('input', function(e) {
     if (e.target && e.target.id === 'investigations-search') {
       window._investigationsFilter.search = e.target.value;
-      _renderInvestigations();
+      if (_invSearchTimer) clearTimeout(_invSearchTimer);
+      _invSearchTimer = setTimeout(function() { _invSearchTimer = 0; _renderInvestigations(); }, 130);
     }
   });
 
@@ -12831,7 +16313,7 @@
     var detail = document.getElementById('investigation-detail');
     if (detail) {
       detail.style.display = '';
-      detail.innerHTML = '<p class="empty-state">Loading…</p>';
+      detail.innerHTML = window.ProgressTrack ? window.ProgressTrack.loadingHtml() : '<p class="empty-state">Loading…</p>';
     }
     // Switch the Investigations page into single-study focus mode: hide the
     // grid + toolbar + chips and let the detail panel take the full width.
@@ -13087,7 +16569,7 @@
       '</div>' +
       '<div class="investigation-detail-panel" data-tab="interventions">' +
         '<div id="inv-interventions-host">' +
-          '<p class="empty-state">Loading interventions…</p>' +
+          (window.ProgressTrack ? window.ProgressTrack.loadingHtml('Loading interventions…') : '<p class="empty-state">Loading interventions…</p>') +
         '</div>' +
       '</div>' +
       '<div class="investigation-detail-panel" data-tab="runs">' +
@@ -15974,7 +19456,7 @@
     _ceStopRunPoll();  // clear any prior interval
     var myToken = ++window._cePollToken;
     var el = document.getElementById('ce-test-results');
-    if (el) el.innerHTML = '<p class="empty-state">Loading run&hellip;</p>';
+    if (el) el.innerHTML = window.ProgressTrack ? window.ProgressTrack.loadingHtml('Loading run…') : '<p class="empty-state">Loading run&hellip;</p>';
 
     function tick() {
       Promise.all([
